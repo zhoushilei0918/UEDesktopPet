@@ -38,6 +38,7 @@ FDesktopPetConfig UDesktopPetSettings::MakeRuntimeConfig() const
     Result.SupersampleScale = SupersampleScale;
     Result.TargetFrameRate = TargetFrameRate;
     Result.Exposure = Exposure;
+    Result.bUseEnginePostProcessing = bUseEnginePostProcessing;
     Result.bClickThroughTransparentPixels = bClickThroughTransparentPixels;
     Result.HitAlphaThreshold = HitAlphaThreshold;
     Result.MenuCloseDelay = MenuCloseDelay;

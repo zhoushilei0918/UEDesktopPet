@@ -8,5 +8,6 @@ namespace DesktopPetCompositor
     /** 输入 HDR 反透明度图和预乘 UI 图；输出 Windows 所需的 BGRA 预乘像素。 */
     void Composite(const TArray<FFloat16Color>& Scene,const TArray<FColor>& UI,
                    int32 Width,int32 Height,const FDesktopPetConfig& Config,
-                   TArray<FColor>& Out,TArray<uint8>& SceneAlpha);
+                   TArray<FColor>& Out,TArray<uint8>& SceneAlpha,
+                   const TArray<FFloat16Color>* FinalColor=nullptr);
 }

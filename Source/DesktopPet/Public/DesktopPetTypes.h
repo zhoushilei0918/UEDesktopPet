@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
 #include "DesktopPetTypes.generated.h"
@@ -68,6 +68,9 @@ struct DESKTOPPET_API FDesktopPetConfig
     float AdditiveAlphaStrength = 1.f;
     /** 将外部配置约束到合法范围，避免超大纹理或除零。 */
     void Normalize();
+    /** 使用引擎最终颜色（含关卡色调映射/调色）；关闭时恢复旧版简化 HDR 合成。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Quality")
+    bool bUseEnginePostProcessing = true;
     /** 逻辑尺寸乘显示缩放后的实际物理像素尺寸。 */
     FIntPoint GetDisplaySize() const;
 };

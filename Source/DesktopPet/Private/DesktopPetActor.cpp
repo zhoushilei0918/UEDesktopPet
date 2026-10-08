@@ -63,23 +63,19 @@ bool ADesktopPetActor::StartDesktopWindow()
     SceneTarget->ClearColor=FLinearColor(0,0,0,1);
     SceneTarget->InitCustomFormat(Runtime->Width*Runtime->Scale,Runtime->Height*Runtime->Scale,PF_FloatRGBA,true);
     SceneTarget->UpdateResourceImmediate(true);
+    FinalColorTarget=NewObject<UTextureRenderTarget2D>(this);
+    FinalColorTarget->ClearColor=FLinearColor::Transparent;
+    FinalColorTarget->InitCustomFormat(Runtime->Width*Runtime->Scale,Runtime->Height*Runtime->Scale,PF_FloatRGBA,true);
+    FinalColorTarget->UpdateResourceImmediate(true);
+    OpacityCapture=NewObject<USceneCaptureComponent2D>(this,NAME_None,RF_Transient);
+    OpacityCapture->bCaptureEveryFrame=false;
+    OpacityCapture->bCaptureOnMovement=false;
+    OpacityCapture->RegisterComponent();
     UITarget=NewObject<UTextureRenderTarget2D>(this);
     UITarget->ClearColor=FLinearColor::Transparent;
     UITarget->InitCustomFormat(Runtime->Width,Runtime->Height,PF_B8G8R8A8,false);
     UITarget->UpdateResourceImmediate(true);
-    Capture->TextureTarget=SceneTarget;
-    Capture->CaptureSource=SCS_SceneColorHDR;
-    Capture->CompositeMode=SCCM_Overwrite;
-    Capture->bAlwaysPersistRenderingState=true;
-    // 保留模型、粒子和半透明；关闭会填满背景或破坏透明轮廓的环境后处理。
-    Capture->ShowFlags.SetAtmosphere(false);Capture->ShowFlags.SetFog(false);
-    Capture->ShowFlags.SetVolumetricFog(false);Capture->ShowFlags.SetMotionBlur(false);
-    Capture->ShowFlags.SetTemporalAA(false);Capture->ShowFlags.SetAntiAliasing(false);
-    Capture->ShowFlags.SetEyeAdaptation(false);Capture->ShowFlags.SetBloom(false);
-    Capture->ShowFlags.SetScreenSpaceReflections(false);
-    Capture->ShowFlags.SetParticles(true);Capture->ShowFlags.SetNiagara(true);
-    Capture->ShowFlags.SetTranslucency(DesiredConfig.bCaptureTranslucency);
-    Capture->ShowFlags.SetSeparateTranslucency(DesiredConfig.bCaptureTranslucency);
+    ConfigureCapturePipeline();
     RefreshVisibleActors();
     bConfigPending=false;bWidgetPending=false;
     OnRuntimeConfigApplied.Broadcast(DesiredConfig);
@@ -95,7 +91,8 @@ void ADesktopPetActor::StopDesktopWindow()
     if(Runtime)Runtime->ReleaseHeldInput();
     Runtime.Reset();
     if(Capture)Capture->TextureTarget=nullptr;
-    SceneTarget=nullptr;UITarget=nullptr;
+    if(OpacityCapture){OpacityCapture->TextureTarget=nullptr;OpacityCapture->DestroyComponent();OpacityCapture=nullptr;}
+    SceneTarget=nullptr;FinalColorTarget=nullptr;UITarget=nullptr;
     bStopping=false;
 }
 // 仅显式重启才替换 HWND；尺寸和 SSAA 的运行时更改不走这里。

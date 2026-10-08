@@ -45,6 +45,9 @@ public:
     /** 捕获颜色的曝光倍数，修改后下一帧生效。 */
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="0.01",ClampMax="16"))
     float Exposure = 1.f;
+    /** 使用引擎后处理输出，并通过独立捕获保留透明轮廓。 */
+    UPROPERTY(Config, EditAnywhere, Category="Quality")
+    bool bUseEnginePostProcessing = true;
     /** 启用按命中阈值和 UI 命中判定的额外穿透；零 Alpha 像素始终由 Windows 穿透。 */
     UPROPERTY(Config, EditAnywhere, Category="Input")
     bool bClickThroughTransparentPixels = true;

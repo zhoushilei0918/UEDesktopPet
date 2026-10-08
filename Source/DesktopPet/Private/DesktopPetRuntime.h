@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "DesktopPetActor.h"
 #include "DesktopPetSettings.h"
 #include "Blueprint/UserWidget.h"
@@ -49,6 +49,10 @@ struct FPetReadback
 {
     FRHIGPUTextureReadback Scene{TEXT("DesktopPetScene")};
     FRHIGPUTextureReadback UI{TEXT("DesktopPetUI")};
+    /** 与覆盖率同一帧的引擎最终颜色，单独读回而不牺牲 Alpha。 */
+    FRHIGPUTextureReadback FinalColor{TEXT("DesktopPetFinalColor")};
+    TArray<FFloat16Color> FinalColorPixels;
+    bool bHasFinalColor=false;
     TAtomic<bool> Submitted{false}, Copying{false}, Complete{false}, Failed{false};
     TArray<FFloat16Color> ScenePixels;
     TArray<FColor> UIPixels;
@@ -149,6 +153,9 @@ struct FDesktopPetRuntime
         const bool Resize=NewConfig.GetDisplaySize()!=Config.GetDisplaySize()||NewConfig.SupersampleScale!=Config.SupersampleScale;
         const bool Move=NewConfig.WindowPosition!=Config.WindowPosition;
         const bool HideChanged=NewConfig.bHideGameWindow!=Config.bHideGameWindow;
+        const bool PipelineChanged=NewConfig.bUseEnginePostProcessing!=Config.bUseEnginePostProcessing;
+        // 丢弃旧管线在途帧，避免切换瞬间把旧 HDR 误当成后处理颜色。
+        if(PipelineChanged){FlushRenderingCommands();Pending.Reset();}
         Config=NewConfig;
         ReadConfig();
         if(!Draggable)FinishDrag();
@@ -169,12 +176,13 @@ struct FDesktopPetRuntime
             Pixels.SetNumZeroed(Width*Height);SceneAlpha.SetNumZeroed(Width*Height);
             Owner->SceneTarget->InitCustomFormat(Width*Scale,Height*Scale,PF_FloatRGBA,true);
             Owner->SceneTarget->UpdateResourceImmediate(true);
+            Owner->FinalColorTarget->InitCustomFormat(Width*Scale,Height*Scale,PF_FloatRGBA,true);
+            Owner->FinalColorTarget->UpdateResourceImmediate(true);
             Owner->UITarget->InitCustomFormat(Width,Height,PF_B8G8R8A8,false);
             Owner->UITarget->UpdateResourceImmediate(true);
         }
         VirtualWindow->Resize(FVector2D(Config.WindowSize));
-        Owner->Capture->ShowFlags.SetTranslucency(Config.bCaptureTranslucency);
-        Owner->Capture->ShowFlags.SetSeparateTranslucency(Config.bCaptureTranslucency);
+        Owner->ConfigureCapturePipeline();
         SetWindowPos(Window,Topmost?HWND_TOPMOST:HWND_NOTOPMOST,Config.WindowPosition.X,Config.WindowPosition.Y,
                      Width,Height,SWP_NOACTIVATE|(Move?0:SWP_NOMOVE));
         if(HideChanged)FDesktopPetWindowGuard::SetHidden(Config.bHideGameWindow);
@@ -424,7 +432,7 @@ struct FDesktopPetRuntime
     void Composite(const FPetReadback& F)
     {
         FPetDpiScope DpiScope;
-        DesktopPetCompositor::Composite(F.ScenePixels,F.UIPixels,Width,Height,Config,Pixels,SceneAlpha);
+        DesktopPetCompositor::Composite(F.ScenePixels,F.UIPixels,Width,Height,Config,Pixels,SceneAlpha,F.bHasFinalColor?&F.FinalColorPixels:nullptr);
         FMemory::Memcpy(Bits,Pixels.GetData(),Pixels.Num()*sizeof(FColor));
         SIZE Size{Width,Height};POINT Origin{0,0};BLENDFUNCTION Blend{AC_SRC_OVER,0,255,AC_SRC_ALPHA};
         if(!UpdateLayeredWindow(Window,nullptr,nullptr,&Size,MemoryDC,&Origin,0,&Blend,ULW_ALPHA))
@@ -445,7 +453,7 @@ struct FDesktopPetRuntime
             }
             else if(Pending->Complete.Load())
             {Composite(*Pending);Pending.Reset();}
-            else if(Pending->Submitted.Load()&&!Pending->Copying.Load()&&Pending->Scene.IsReady()&&Pending->UI.IsReady())
+            else if(Pending->Submitted.Load()&&!Pending->Copying.Load()&&Pending->Scene.IsReady()&&Pending->UI.IsReady()&&(!Pending->bHasFinalColor||Pending->FinalColor.IsReady()))
             {
                 Pending->Copying.Store(true);auto Frame=Pending;
                 ENQUEUE_RENDER_COMMAND(DesktopPetReadback)([Frame](FRHICommandListImmediate& Cmd)
@@ -456,6 +464,14 @@ struct FDesktopPetRuntime
                     Frame->ScenePixels.SetNumUninitialized(Frame->SceneWidth*Frame->SceneHeight);
                     for(int32 Y=0;Y<Frame->SceneHeight;++Y)FMemory::Memcpy(Frame->ScenePixels.GetData()+Y*Frame->SceneWidth,S+Y*Pitch,Frame->SceneWidth*sizeof(FFloat16Color));
                     Frame->Scene.Unlock();
+                    if(Frame->bHasFinalColor)
+                    {
+                        const auto* C=static_cast<const FFloat16Color*>(Frame->FinalColor.Lock(Pitch));
+                        if(!C){Frame->Failed.Store(true);return;}
+                        Frame->FinalColorPixels.SetNumUninitialized(Frame->SceneWidth*Frame->SceneHeight);
+                        for(int32 Y=0;Y<Frame->SceneHeight;++Y)FMemory::Memcpy(Frame->FinalColorPixels.GetData()+Y*Frame->SceneWidth,C+Y*Pitch,Frame->SceneWidth*sizeof(FFloat16Color));
+                        Frame->FinalColor.Unlock();
+                    }
                     const auto* U=static_cast<const FColor*>(Frame->UI.Lock(Pitch));
                     if(!U){Frame->Failed.Store(true);return;}
                     Frame->UIPixels.SetNumUninitialized(Frame->Width*Frame->Height);
@@ -467,13 +483,20 @@ struct FDesktopPetRuntime
         const double Now=FPlatformTime::Seconds();
         if(Pending.IsValid()||Now-LastCapture<1.0/FrameRate)return;
         LastCapture=Now;
+        if(Config.bUseEnginePostProcessing)
+        {
+            Owner->SyncOpacityCapture();
+            Owner->OpacityCapture->CaptureScene();
+        }
         Owner->Capture->CaptureScene();
         Renderer->DrawWindow(Owner->UITarget,VirtualWindow->GetHittestGrid(),VirtualWindow.ToSharedRef(),Config.DisplayScale,FVector2D(Width,Height),Delta,false);
         auto Frame=MakeShared<FPetReadback,ESPMode::ThreadSafe>();Pending=Frame;
+        Frame->bHasFinalColor=Config.bUseEnginePostProcessing;
         Frame->Width=Width;Frame->Height=Height;Frame->SceneWidth=Width*Scale;Frame->SceneHeight=Height*Scale;
         FTextureRenderTargetResource* SR=Owner->SceneTarget->GameThread_GetRenderTargetResource();
         FTextureRenderTargetResource* UR=Owner->UITarget->GameThread_GetRenderTargetResource();
-        ENQUEUE_RENDER_COMMAND(DesktopPetCopy)([Frame,SR,UR](FRHICommandListImmediate& Cmd)
+        FTextureRenderTargetResource* CR=Owner->FinalColorTarget->GameThread_GetRenderTargetResource();
+        ENQUEUE_RENDER_COMMAND(DesktopPetCopy)([Frame,SR,UR,CR](FRHICommandListImmediate& Cmd)
         {
             FRHITexture* ST=SR->GetRenderTargetTexture();FRHITexture* UT=UR->GetRenderTargetTexture();
             Cmd.Transition(FRHITransitionInfo(ST,ERHIAccess::Unknown,ERHIAccess::CopySrc));
@@ -481,6 +504,13 @@ struct FDesktopPetRuntime
             Frame->Scene.EnqueueCopy(Cmd,ST);Frame->UI.EnqueueCopy(Cmd,UT);
             Cmd.Transition(FRHITransitionInfo(ST,ERHIAccess::CopySrc,ERHIAccess::SRVMask));
             Cmd.Transition(FRHITransitionInfo(UT,ERHIAccess::CopySrc,ERHIAccess::SRVMask));
+            if(Frame->bHasFinalColor)
+            {
+                FRHITexture* CT=CR->GetRenderTargetTexture();
+                Cmd.Transition(FRHITransitionInfo(CT,ERHIAccess::Unknown,ERHIAccess::CopySrc));
+                Frame->FinalColor.EnqueueCopy(Cmd,CT);
+                Cmd.Transition(FRHITransitionInfo(CT,ERHIAccess::CopySrc,ERHIAccess::SRVMask));
+            }
             Frame->Submitted.Store(true);
         });
     }
@@ -514,6 +544,7 @@ struct FDesktopPetRuntime
         J->SetNumberField(TEXT("ue_show_attempts_blocked"),Guard.PreventedShowCount);
         J->SetNumberField(TEXT("display_scale"),Config.DisplayScale);
         J->SetBoolField(TEXT("capture_translucency"),Config.bCaptureTranslucency);
+        J->SetBoolField(TEXT("engine_post_processing"),Config.bUseEnginePostProcessing);
         J->SetBoolField(TEXT("preserve_additive"),Config.bPreserveAdditiveEffects);
         FString Text;auto Writer=TJsonWriterFactory<>::Create(&Text);FJsonSerializer::Serialize(J,Writer);
         FFileHelper::SaveStringToFile(Text,*(Folder/(TEXT("Runtime-")+Backend+TEXT(".json"))));

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/EngineTypes.h"
@@ -203,6 +203,10 @@ public:
     UFUNCTION(BlueprintPure,Category="Desktop Pet|Diagnostics") int64 GetPresentedFrameCount() const;
     /** C++ 原生 Windows 集成入口，不将 HWND 暴露给蓝图。 */
     void* GetNativeWindowHandle() const;
+    /** 获取当前是否使用引擎最终颜色管线。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Quality") bool GetUseEnginePostProcessing() const {return GetRuntimeConfig().bUseEnginePostProcessing;}
+    /** 运行时切换引擎最终颜色/旧版简化颜色，保持窗口和 UI 实例。 */
+    UFUNCTION(BlueprintCallable,Category="Desktop Pet|Quality") void SetUseEnginePostProcessing(bool Value);
     virtual void Tick(float DeltaSeconds) override;
 protected:
     virtual void BeginPlay() override;
@@ -210,6 +214,14 @@ protected:
 private:
     /** GPU 场景捕获目标，存储 HDR RGB 和反透明度。 */
     UPROPERTY(Transient) TObjectPtr<UTextureRenderTarget2D> SceneTarget;
+    /** 引擎后处理后的线性 sRGB 颜色；不依赖此纹理的 Alpha。 */
+    UPROPERTY(Transient) TObjectPtr<UTextureRenderTarget2D> FinalColorTarget;
+    /** 独立保留模型/半透明覆盖率，避免 FinalColor 捕获丢失透明背景。 */
+    UPROPERTY(Transient) TObjectPtr<USceneCaptureComponent2D> OpacityCapture;
+    /** 应用颜色模式，始终由 Capture 作为用户配置的主相机。 */
+    void ConfigureCapturePipeline();
+    /** 同步两个捕获的相机和显示名单，保证颜色与轮廓逐帧对齐。 */
+    void SyncOpacityCapture();
     /** UMG 单独捕获，避免场景筛选剔除 UI。 */
     UPROPERTY(Transient) TObjectPtr<UTextureRenderTarget2D> UITarget;
     /** 项目交给插件显示的实例；插件不强制其 Widget 类。 */
