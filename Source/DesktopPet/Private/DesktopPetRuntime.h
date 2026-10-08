@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "DesktopPetActor.h"
 #include "DesktopPetSettings.h"
 #include "Blueprint/UserWidget.h"
@@ -21,6 +21,8 @@
 #include "RHIGPUReadback.h"
 #include "RenderingThread.h"
 #include "RenderResource.h"
+// 显式引用渲染目标资源定义，确保独立插件构建不依赖项目预编译头。
+#include "TextureResource.h"
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -87,7 +89,6 @@ struct FDesktopPetRuntime
     ADesktopPetActor* Owner=nullptr;
     HWND Window=nullptr;
     FDesktopPetConfig Config;
-    TOptional<FVector2D> PointerOverride;
     HDC MemoryDC=nullptr;
     HBITMAP Bitmap=nullptr;
     HGDIOBJ OldBitmap=nullptr;
@@ -95,7 +96,7 @@ struct FDesktopPetRuntime
     int32 Width=600,Height=760,Scale=2,FrameRate=30,Threshold=8;
     float Exposure=1,CloseDelay=.4f,AnimationSeconds=.18f;
     bool Topmost=true,ClickThrough=true,Draggable=true,ExitOnClose=true,Diagnostics=false;
-    bool CloseRequested=false,Dragging=false,UIPressed=false,Hovered=false,MenuOpen=false,ForceMenu=false;
+    bool CloseRequested=false,Dragging=false,UIPressed=false,Hovered=false,MenuOpen=false;
     bool WasInputTransparent=false;
     POINT DragOffset{};
     FVector2D Cursor=FVector2D::ZeroVector,LastCursor=FVector2D::ZeroVector;
@@ -113,12 +114,15 @@ struct FDesktopPetRuntime
     /** 原生按键保持与 Slate UI 按键分开，普通输入动作也能在移出窗口后收到抬起。 */
     TSet<FKey> NativePressed;
 
-    // 将通用指针事件发给项目；增强输入桥也只订阅这个事件。
+    // 回调可能关闭窗口，后续工作必须确认该运行时仍属于宿主。
+    bool IsActive() const {return Owner&&!Owner->bStopping&&Owner->Runtime.Get()==this&&!Owner->IsActorBeingDestroyed();}
+    // 通用指针数据保留给项目自己的输入系统，插件不再注入 Enhanced Input。
     void EmitPointer(EDesktopPetPointerEvent Type,FKey Key=FKey(),float Wheel=0)
     {
         FDesktopPetPointerEvent E;
         E.Type=Type;E.Key=Key;E.PixelPosition=Cursor;E.CanvasPosition=Cursor/Config.DisplayScale;
         E.Delta=Cursor-LastCursor;E.WheelDelta=Wheel;E.bOverUI=HitsUI(UIPath());E.bOverScene=HitsScene();
+        E.HitActor=PickActor(Cursor);
         Owner->OnPointerInput.Broadcast(E);
     }
     // 缓存配置标量，避免每个像素重复查 UObject 设置。
@@ -203,8 +207,11 @@ struct FDesktopPetRuntime
             SetWindowLongPtr(H,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(R));
         }
         if(!R)return DefWindowProc(H,M,W,L);
+        // 原生消息内触发蓝图 Stop 时，运行时至少保留到本条消息返回。
+        const TSharedPtr<FDesktopPetRuntime> MessageRuntime=R->Owner?R->Owner->Runtime:nullptr;
+        if(!R->IsActive())return DefWindowProc(H,M,W,L);
         // 移动统一由 PollInput 采样；提前覆盖移动坐标会丢失增强输入的位移增量。
-        if(!R->PointerOverride.IsSet()&&(M==WM_LBUTTONDOWN||M==WM_LBUTTONUP||M==WM_RBUTTONDOWN||M==WM_RBUTTONUP||M==WM_MOUSEWHEEL))
+        if((M==WM_LBUTTONDOWN||M==WM_LBUTTONUP||M==WM_RBUTTONDOWN||M==WM_RBUTTONUP||M==WM_MOUSEWHEEL))
         {
             R->LastCursor=R->Cursor;
             POINT Point{GET_X_LPARAM(L),GET_Y_LPARAM(L)};
@@ -218,9 +225,7 @@ struct FDesktopPetRuntime
         case WM_LBUTTONDOWN:R->PointerDown();return 0;
         case WM_LBUTTONUP:R->PointerUp();return 0;
         case WM_RBUTTONDOWN:
-            if(R->HitsScene()||R->HitsUI(R->UIPath()))
-            {R->NativePressed.Add(EKeys::RightMouseButton);if(GetCapture()!=H)SetCapture(H);}
-            R->EmitPointer(EDesktopPetPointerEvent::Press,EKeys::RightMouseButton);return 0;
+            R->PointerDown(EKeys::RightMouseButton);return 0;
         case WM_RBUTTONUP:
             R->NativePressed.Remove(EKeys::RightMouseButton);
             R->EmitPointer(EDesktopPetPointerEvent::Release,EKeys::RightMouseButton);
@@ -244,12 +249,14 @@ struct FDesktopPetRuntime
         return DefWindowProc(H,M,W,L);
     }
     // HitTestGrid 使用最终物理像素坐标，因此显示缩放后仍能准确命中 UMG。
-    FWidgetPath UIPath() const
+    FWidgetPath UIPathAt(FVector2D Position) const
     {
         if(!VirtualWindow.IsValid())return FWidgetPath();
-        auto Hits=VirtualWindow->GetHittestGrid().GetBubblePath(Cursor,0,false,VirtualUser->GetUserIndex());
+        auto Hits=VirtualWindow->GetHittestGrid().GetBubblePath(Position,0,false,VirtualUser->GetUserIndex());
         return FWidgetPath(Hits);
     }
+    // 当前指针与外部蓝图查询使用相同的物理坐标系。
+    FWidgetPath UIPath() const {return UIPathAt(Cursor);}
     // 装饰文字不会抢占桌面输入，可交互的 Slate 控件优先于场景拖拽。
     bool HitsUI(const FWidgetPath& Path)const
     {
@@ -267,38 +274,60 @@ struct FDesktopPetRuntime
         const int32 X=FMath::FloorToInt(Cursor.X),Y=FMath::FloorToInt(Cursor.Y);
         return X>=0&&Y>=0&&X<Width&&Y<Height&&SceneAlpha.IsValidIndex(Y*Width+X)&&SceneAlpha[Y*Width+X]>=Threshold;
     }
-    // UI 优先；没有 UI 时才向项目发送人物点击并考虑自动拖拽。
-    void PointerDown()
+    // 必须同时满足已渲染的 Alpha、非 UI 和捕获相机碰撞查询；显示白名单不自动授予交互权。
+    AActor* PickActor(FVector2D Position) const
+    {
+        if(!FMath::IsFinite(Position.X)||!FMath::IsFinite(Position.Y))return nullptr;
+        const int32 X=FMath::FloorToInt(Position.X),Y=FMath::FloorToInt(Position.Y);
+        if(X<0||Y<0||X>=Width||Y>=Height||!SceneAlpha.IsValidIndex(Y*Width+X)||SceneAlpha[Y*Width+X]<Threshold)return nullptr;
+        if(HitsUI(UIPathAt(Position)))return nullptr;
+        return Owner->TraceInteractionActor(FVector2D((Position.X+.5)/Width,(Position.Y+.5)/Height));
+    }
+    // 两种鼠标键统一判定；Actor 点击定义为按下，左键才参与默认窗口拖拽。
+    void PointerDown(FKey Key=EKeys::LeftMouseButton)
     {
         if(!Owner||!VirtualUser.IsValid())return;
-        EmitPointer(EDesktopPetPointerEvent::Press,EKeys::LeftMouseButton);
+        Owner->UpdateHoveredActor(PickActor(Cursor));
+        if(!IsActive())return;
+        EmitPointer(EDesktopPetPointerEvent::Press,Key);
+        if(!IsActive())return;
         FWidgetPath Path=UIPath();
         if(HitsUI(Path))
         {
-            NativePressed.Add(EKeys::LeftMouseButton);
-            UIPressed=true;Pressed.Add(EKeys::LeftMouseButton);
-            FSlateApplication::Get().RoutePointerDownEvent(Path,Pointer(EKeys::LeftMouseButton));
+            if(Key!=EKeys::LeftMouseButton)return;
+            NativePressed.Add(Key);
+            UIPressed=true;Pressed.Add(Key);
+            FSlateApplication::Get().RoutePointerDownEvent(Path,Pointer(Key));
+            if(!IsActive())return;
             if(GetCapture()!=Window)SetCapture(Window);
         }
-        else if(HitsScene())
+        else if(AActor* Actor=PickActor(Cursor))
         {
             // 保持普通按键也需要捕获；是否进入窗口拖拽由配置或项目增强输入决定。
-            NativePressed.Add(EKeys::LeftMouseButton);if(GetCapture()!=Window)SetCapture(Window);
-            ++PetClicks;Owner->OnPetClicked.Broadcast();
-            UE_LOG(LogDesktopPet,Display,TEXT("PetClick %llu"),PetClicks);
-            if(Draggable&&Config.bAutoDragOnPrimaryButton)BeginDrag();
+            NativePressed.Add(Key);if(GetCapture()!=Window)SetCapture(Window);
+            if(Key==EKeys::LeftMouseButton)
+            {
+                ++PetClicks;Owner->OnActorLeftClicked.Broadcast(Actor);
+                if(!IsActive())return;
+                if(IsValid(Actor)&&Owner->InteractionActors.Contains(Actor))Owner->OnPetClicked.Broadcast();
+                if(IsActive()&&IsValid(Actor)&&Owner->InteractionActors.Contains(Actor)&&Draggable&&Config.bAutoDragOnPrimaryButton)BeginDrag();
+            }
+            else if(Key==EKeys::RightMouseButton)Owner->OnActorRightClicked.Broadcast(Actor);
         }
     }
     // 按钮在 Slate 中正常触发 OnClicked，并释放原生鼠标捕获。
     void PointerUp()
     {
+        // 在回调前清理保持状态，避免项目在 Release/OnClicked 内停止窗口时递归发送抬起。
+        const bool WasUIPressed=UIPressed;
+        UIPressed=false;
         NativePressed.Remove(EKeys::LeftMouseButton);
+        Pressed.Remove(EKeys::LeftMouseButton);
         EmitPointer(EDesktopPetPointerEvent::Release,EKeys::LeftMouseButton);
-        if(UIPressed)
+        if(!IsActive()&&!Owner->bStopping)return;
+        if(WasUIPressed)
         {
-            Pressed.Remove(EKeys::LeftMouseButton);
             FSlateApplication::Get().RoutePointerUpEvent(UIPath(),Pointer(EKeys::LeftMouseButton));
-            UIPressed=false;
         }
         FinishDrag();if(NativePressed.IsEmpty()&&GetCapture()==Window)ReleaseCapture();
     }
@@ -318,7 +347,6 @@ struct FDesktopPetRuntime
         FPetDpiScope DpiScope;
         Config=InConfig;
         ReadConfig();
-        ForceMenu=FParse::Param(FCommandLine::Get(),TEXT("PetMenu"));
         Backend=GDynamicRHI?GDynamicRHI->GetName():TEXT("Unknown");
         WNDCLASSEXW WC{};WC.cbSize=sizeof(WC);WC.lpfnWndProc=WindowProc;WC.hInstance=GetModuleHandle(nullptr);
         WC.lpszClassName=L"UE58DesktopPetWindow";WC.hCursor=LoadCursor(nullptr,IDC_ARROW);
@@ -367,19 +395,22 @@ struct FDesktopPetRuntime
         FPetDpiScope DpiScope;
         ApplyPetGameViewportPolicy(Config.bHideGameWindow);
         POINT P{};GetCursorPos(&P);
-        if(Dragging&&!PointerOverride.IsSet())SetWindowPos(Window,Topmost?HWND_TOPMOST:HWND_TOP,P.x-DragOffset.x,P.y-DragOffset.y,0,0,SWP_NOSIZE|SWP_NOACTIVATE);
+        if(Dragging)SetWindowPos(Window,Topmost?HWND_TOPMOST:HWND_TOP,P.x-DragOffset.x,P.y-DragOffset.y,0,0,SWP_NOSIZE|SWP_NOACTIVATE);
         ScreenToClient(Window,&P);LastCursor=Cursor;Cursor=FVector2D(P.x,P.y);
-        if(PointerOverride.IsSet())Cursor=PointerOverride.GetValue();
         FWidgetPath Path=UIPath();
-        const bool OnUI=HitsUI(Path),OnScene=HitsScene();
+        Owner->UpdateHoveredActor(PickActor(Cursor));
+        if(!IsActive())return;
+        const bool OnUI=HitsUI(Path),OnScene=Owner->GetHoveredActor()!=nullptr;
         const double Now=FPlatformTime::Seconds();
         if(OnUI||OnScene||UIPressed||Dragging)LastHover=Now;
-        if(OnScene!=Hovered){Hovered=OnScene;Owner->OnPetHoverChanged.Broadcast(Hovered);}
-        MenuOpen=ForceMenu||OnUI||OnScene||UIPressed||Dragging||(Now-LastHover<CloseDelay);
+        Hovered=OnScene;
+        MenuOpen=OnUI||OnScene||UIPressed||Dragging||(Now-LastHover<CloseDelay);
         OpenAmount=FMath::FInterpConstantTo(OpenAmount,MenuOpen?1.f:0.f,Delta,1.f/AnimationSeconds);
         Owner->OnInteractionProgress.Broadcast(FMath::SmoothStep(0.f,1.f,OpenAmount),FVector2D(Config.WindowSize));
-        // 即使指针静止，动画/粒子也可能改变其下方的有效 Alpha，需要刷新输入桥命中状态。
+        if(!IsActive())return;
+        // 即使指针静止，动画/粒子也可能改变其下方的有效 Alpha，需要刷新 Actor 命中状态。
         EmitPointer(EDesktopPetPointerEvent::Move);
+        if(!IsActive())return;
         FSlateApplication::Get().RoutePointerMoveEvent(Path,Pointer(),false);
         const bool Transparent=ClickThrough&&!OnUI&&!OnScene&&!Dragging&&!UIPressed&&NativePressed.IsEmpty();
         if(Transparent!=WasInputTransparent)

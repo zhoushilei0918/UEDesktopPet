@@ -1,19 +1,13 @@
-﻿{
+{
   "FileVersion": 3,
-  "Version": 2,
-  "VersionName": "2.0.0",
+  "Version": 3,
+  "VersionName": "3.0.0",
   "FriendlyName": "Desktop Pet — Transparent Window",
-  "Description": "通用 Win64 透明窗口、运行时蓝图配置、UMG、Niagara、SSAA 与增强输入桥。",
+  "Description": "通用 Win64 透明窗口、完整蓝图 Getter、Actor 白名单交互、UMG、Niagara 和 SSAA。",
   "Category": "Desktop",
   "CanContainContent": false,
   "SupportedTargetPlatforms": [
     "Win64"
-  ],
-  "Plugins": [
-    {
-      "Name": "EnhancedInput",
-      "Enabled": true
-    }
   ],
   "Modules": [
     {

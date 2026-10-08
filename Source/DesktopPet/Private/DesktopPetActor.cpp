@@ -89,10 +89,14 @@ bool ADesktopPetActor::StartDesktopWindow()
 // 项目的 Widget 实例保留，便于停止/启动显示时保留菜单状态。
 void ADesktopPetActor::StopDesktopWindow()
 {
+    if(bStopping)return;
+    bStopping=true;
+    UpdateHoveredActor(nullptr);
     if(Runtime)Runtime->ReleaseHeldInput();
     Runtime.Reset();
     if(Capture)Capture->TextureTarget=nullptr;
     SceneTarget=nullptr;UITarget=nullptr;
+    bStopping=false;
 }
 // 仅显式重启才替换 HWND；尺寸和 SSAA 的运行时更改不走这里。
 void ADesktopPetActor::RestartDesktopWindow(){bRestartRequested=true;}
@@ -148,23 +152,10 @@ void ADesktopPetActor::SaveDiagnosticFrame(){if(Runtime)Runtime->Report(true);}
 float ADesktopPetActor::GetInteractionProgress() const{return Runtime?Runtime->OpenAmount:0.f;}
 int64 ADesktopPetActor::GetPresentedFrameCount() const{return Runtime?Runtime->Frames:0;}
 void* ADesktopPetActor::GetNativeWindowHandle() const{return Runtime?Runtime->Window:nullptr;}
-uint8 ADesktopPetActor::GetSceneAlphaAt(FIntPoint P) const
+// 查询与原生悬停使用同一条 UI 优先、Alpha、相机反投影和 Actor 白名单路径。
+AActor* ADesktopPetActor::GetInteractionActorAtPixel(FVector2D Position) const
 {
-    if(!Runtime||P.X<0||P.Y<0||P.X>=Runtime->Width||P.Y>=Runtime->Height)return 0;
-    return Runtime->SceneAlpha[P.Y*Runtime->Width+P.X];
-}
-// 最终输出包含 UI；不能只用场景 Alpha 判断一个桌面像素是否透明。
-uint8 ADesktopPetActor::GetCompositedAlphaAt(FIntPoint P) const
-{
-    if(!Runtime||P.X<0||P.Y<0||P.X>=Runtime->Width||P.Y>=Runtime->Height)return 0;
-    return Runtime->Pixels[P.Y*Runtime->Width+P.X].A;
-}
-// 只供项目的 Development 自动验收，不影响发布版真实鼠标输入。
-void ADesktopPetActor::DebugSetPointerOverride(TOptional<FVector2D> P)
-{
-#if !UE_BUILD_SHIPPING
-    if(Runtime)Runtime->PointerOverride=P;
-#endif
+    return Runtime?Runtime->PickActor(Position):nullptr;
 }
 // 所有资源更改统一在安全的 Tick 边界处理，随后按限频捕获并输出。
 void ADesktopPetActor::Tick(float Delta)
@@ -172,6 +163,8 @@ void ADesktopPetActor::Tick(float Delta)
     Super::Tick(Delta);
     if(bRestartRequested){bRestartRequested=false;StopDesktopWindow();StartDesktopWindow();}
     if(!Runtime)return;
+    // 蓝图事件允许停止显示；保留当前调用栈资源，并在回调后检查是否已更换运行时。
+    const TSharedPtr<FDesktopPetRuntime> FrameRuntime=Runtime;
     if(Runtime->CloseRequested)
     {
         const bool Exit=Runtime->ExitOnClose&&!GIsEditor;
@@ -183,8 +176,11 @@ void ADesktopPetActor::Tick(float Delta)
         bConfigPending=false;Runtime->ApplyConfig(DesiredConfig);
         OnRuntimeConfigApplied.Broadcast(DesiredConfig);
     }
+    if(Runtime!=FrameRuntime)return;
     if(bWidgetPending){bWidgetPending=false;Runtime->SetWidget();}
-    Runtime->PollInput(Delta);Runtime->CaptureFrame(Delta);
+    FrameRuntime->PollInput(Delta);
+    if(Runtime!=FrameRuntime)return;
+    FrameRuntime->CaptureFrame(Delta);
     if(Runtime->Diagnostics&&FPlatformTime::Seconds()-Runtime->LastReport>2)
     {
         Runtime->LastReport=FPlatformTime::Seconds();Runtime->Report(true);

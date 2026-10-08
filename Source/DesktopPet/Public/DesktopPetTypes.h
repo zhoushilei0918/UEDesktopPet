@@ -1,7 +1,8 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
 #include "DesktopPetTypes.generated.h"
+class AActor;
 
 /** 一个桌宠实例的完整配置；可在蓝图中 Make / Set Members 后交给 ApplyRuntimeConfig。 */
 USTRUCT(BlueprintType)
@@ -72,28 +73,30 @@ struct DESKTOPPET_API FDesktopPetConfig
 };
 
 /** 与角色、菜单无关的原始指针事件类型。 */
-UENUM(BlueprintType)
+UENUM(BlueprintType,meta=(ScriptName="DesktopPetPointerEventType"))
 enum class EDesktopPetPointerEvent : uint8 { Move, Press, Release, Wheel };
 
-/** 传给项目蓝图和增强输入桥的统一指针数据。 */
+/** 传给项目蓝图及自定义输入系统的统一指针数据。 */
 USTRUCT(BlueprintType)
 struct DESKTOPPET_API FDesktopPetPointerEvent
 {
     GENERATED_BODY()
     /** 按下、抬起、移动或滚轮。 */
-    UPROPERTY(BlueprintReadOnly) EDesktopPetPointerEvent Type = EDesktopPetPointerEvent::Move;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") EDesktopPetPointerEvent Type = EDesktopPetPointerEvent::Move;
     /** 鼠标键；移动和滚轮事件可为空键。 */
-    UPROPERTY(BlueprintReadOnly) FKey Key;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") FKey Key;
     /** 原生窗口内的物理像素坐标。 */
-    UPROPERTY(BlueprintReadOnly) FVector2D PixelPosition = FVector2D::ZeroVector;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") FVector2D PixelPosition = FVector2D::ZeroVector;
     /** 除以显示缩放后的 UI 逻辑画布坐标。 */
-    UPROPERTY(BlueprintReadOnly) FVector2D CanvasPosition = FVector2D::ZeroVector;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") FVector2D CanvasPosition = FVector2D::ZeroVector;
     /** 当前相对上一次指针位置的物理像素增量。 */
-    UPROPERTY(BlueprintReadOnly) FVector2D Delta = FVector2D::ZeroVector;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") FVector2D Delta = FVector2D::ZeroVector;
+    /** 指针命中的交互白名单 Actor；UI、空白或未选择对象上为空。 */
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") TObjectPtr<AActor> HitActor=nullptr;
     /** 鼠标滚轮格数；可以为负值。 */
-    UPROPERTY(BlueprintReadOnly) float WheelDelta = 0;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") float WheelDelta = 0;
     /** 当前点是否命中交互 UI；项目可以用它决定是否消费输入。 */
-    UPROPERTY(BlueprintReadOnly) bool bOverUI = false;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") bool bOverUI = false;
     /** 当前点是否命中场景 Alpha。 */
-    UPROPERTY(BlueprintReadOnly) bool bOverScene = false;
+    UPROPERTY(BlueprintReadOnly, Category="Desktop Pet|Input") bool bOverScene = false;
 };

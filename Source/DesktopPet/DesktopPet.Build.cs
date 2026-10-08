@@ -5,7 +5,7 @@ public class DesktopPet : ModuleRules
     public DesktopPet(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage=PCHUsageMode.UseExplicitOrSharedPCHs;
-        PublicDependencyModuleNames.AddRange(new[]{"Core","CoreUObject","Engine","DeveloperSettings","UMG","InputCore","EnhancedInput"});
+        PublicDependencyModuleNames.AddRange(new[]{"Core","CoreUObject","Engine","DeveloperSettings","UMG","InputCore"});
         PrivateDependencyModuleNames.AddRange(new[]{"DesktopPetBootstrap","Slate","SlateCore","ApplicationCore","RenderCore","RHI","ImageWrapper","Json"});
         PublicSystemLibraries.AddRange(new[]{"user32.lib","gdi32.lib"});
     }

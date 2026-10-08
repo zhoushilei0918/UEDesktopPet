@@ -1,6 +1,7 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Engine/EngineTypes.h"
 #include "DesktopPetTypes.h"
 #include "DesktopPetActor.generated.h"
 class USceneCaptureComponent2D;
@@ -11,6 +12,7 @@ struct FDesktopPetRuntime;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetHover,bool,bHovered);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetAction,FName,Action);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FDesktopPetClick);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetActorEvent,AActor*,Actor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetPointer,const FDesktopPetPointerEvent&,Event);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDesktopPetInteraction,float,Progress,FVector2D,CanvasSize);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetDrag,bool,bDragging);
@@ -41,13 +43,41 @@ public:
     /** 可在关卡实例或蓝图默认值上填写的起始配置。 */
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|Configuration",meta=(EditCondition="bOverrideDefaultConfig"))
     FDesktopPetConfig InitialConfig;
+    /** 可交互 Actor 白名单；为空时没有人物事件。显示名单与交互名单互相独立。 */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|Interaction") TArray<TObjectPtr<AActor>> InteractionActors;
+    /** 交互查询通道；被显示的遮挡物与角色须对该通道 Block，默认 Visibility。 */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|Interaction") TEnumAsByte<ECollisionChannel> InteractionTraceChannel=ECC_Visibility;
+    /** 反投影射线的最大距离，单位厘米；只影响拾取，不修改相机。 */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|Interaction",meta=(ClampMin="1")) float InteractionTraceDistance=100000.f;
+    /** 静态模型可使用复杂碰撞；骨骼模型通常使用 Physics Asset，默认简单查询。 */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|Interaction") bool bTraceComplexForInteraction=false;
+    /** 指针进入白名单 Actor 时触发一次，并给出该 Actor。 */
+    UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Actor Events") FDesktopPetActorEvent OnActorMouseEnter;
+    /** 指针移出、进入 UI、移除白名单、停止显示或销毁对象时触发离开。 */
+    UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Actor Events") FDesktopPetActorEvent OnActorMouseLeave;
+    /** 左键按下命中白名单 Actor 时触发；UI 优先，不以窗口整体代替 Actor。 */
+    UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Actor Events") FDesktopPetActorEvent OnActorLeftClicked;
+    /** 右键按下命中白名单 Actor 时触发。 */
+    UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Actor Events") FDesktopPetActorEvent OnActorRightClicked;
+    /** 运行时替换交互名单；移除当前悬停对象时立即发出离开事件。 */
+    UFUNCTION(BlueprintCallable,Category="Desktop Pet|Interaction") void SetInteractionActors(const TArray<AActor*>& Actors);
+    /** 添加交互对象；不会自动把对象加入显示白名单。 */
+    UFUNCTION(BlueprintCallable,Category="Desktop Pet|Interaction") void AddInteractionActor(AActor* Actor);
+    /** 移除交互对象，不影响其渲染。 */
+    UFUNCTION(BlueprintCallable,Category="Desktop Pet|Interaction") void RemoveInteractionActor(AActor* Actor);
+    /** 获取当前交互白名单副本，不包含失效对象。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Interaction") TArray<AActor*> GetInteractionActors() const;
+    /** 当前悬停的白名单 Actor；空白或 UI 上返回 None。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Interaction") AActor* GetHoveredActor() const;
+    /** 以桌宠窗口内物理像素查询 Actor，可与项目自己的增强输入组合；不广播事件。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Interaction") AActor* GetInteractionActorAtPixel(FVector2D PixelPosition) const;
     /** 可选项目 Widget 类；也可通过 SetOverlayWidget 传入已经创建的实例。 */
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Desktop Pet|UI") TSubclassOf<UUserWidget> WidgetOverride;
-    /** 鼠标是否进入场景有效 Alpha 区域。 */
+    /** 兼容旧接口：是否悬停在白名单 Actor 上；需要对象引用请使用 Actor Events。 */
     UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Events") FDesktopPetHover OnPetHoverChanged;
     /** 通用用户动作总线；插件不解释 Chat、Quit 等项目业务名称。 */
     UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Events") FDesktopPetAction OnAction;
-    /** 场景区域左键点击通知。 */
+    /** 兼容旧接口：白名单 Actor 的左键通知；新接口同时返回 Actor 引用。 */
     UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Events") FDesktopPetClick OnPetClicked;
     /** 原始指针事件，项目可以桥接到自己的输入或交互系统。 */
     UPROPERTY(BlueprintAssignable,Category="Desktop Pet|Events") FDesktopPetPointer OnPointerInput;
@@ -84,6 +114,45 @@ public:
     UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") FDesktopPetConfig GetRuntimeConfig() const;
     /** 获取 ini 中的新实例默认值；不会修改其他桌宠实例。 */
     UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") static FDesktopPetConfig GetDefaultRuntimeConfig();
+
+    // 每个配置项都有独立纯蓝图 Getter；统一读取实例配置，包含等待下一 Tick 应用的修改。
+    /** 获取当前实例的逻辑画布尺寸。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") FIntPoint GetWindowSize() const {return GetRuntimeConfig().WindowSize;}
+    /** 获取当前实例的显示缩放。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") float GetDisplayScale() const {return GetRuntimeConfig().DisplayScale;}
+    /** 获取当前实例的置顶状态。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetAlwaysOnTop() const {return GetRuntimeConfig().bAlwaysOnTop;}
+    /** 获取当前实例的主窗口隐藏策略。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetHideGameWindow() const {return GetRuntimeConfig().bHideGameWindow;}
+    /** 获取当前实例的拖拽许可。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetDraggable() const {return GetRuntimeConfig().bDraggable;}
+    /** 获取当前实例的左键自动拖拽策略。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetAutoDragOnPrimaryButton() const {return GetRuntimeConfig().bAutoDragOnPrimaryButton;}
+    /** 获取当前实例的关闭时退出策略。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetExitApplicationOnClose() const {return GetRuntimeConfig().bExitApplicationOnClose;}
+    /** 获取当前实例的超采样倍率。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") int32 GetSupersampleScale() const {return GetRuntimeConfig().SupersampleScale;}
+    /** 获取当前实例的输出帧率上限。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") int32 GetTargetFrameRate() const {return GetRuntimeConfig().TargetFrameRate;}
+    /** 获取当前实例的曝光。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") float GetExposure() const {return GetRuntimeConfig().Exposure;}
+    /** 获取当前实例的透明区域穿透策略。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetClickThroughTransparentPixels() const {return GetRuntimeConfig().bClickThroughTransparentPixels;}
+    /** 获取当前实例的输入 Alpha 阈值。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") int32 GetHitAlphaThreshold() const {return GetRuntimeConfig().HitAlphaThreshold;}
+    /** 获取当前实例的离开保持时间。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") float GetMenuCloseDelay() const {return GetRuntimeConfig().MenuCloseDelay;}
+    /** 获取当前实例的交互进度过渡时间。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") float GetMenuAnimationSeconds() const {return GetRuntimeConfig().MenuAnimationSeconds;}
+    /** 获取当前实例的诊断开关。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetWriteDiagnostics() const {return GetRuntimeConfig().bWriteDiagnostics;}
+    /** 获取当前实例的半透明捕获开关。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetCaptureTranslucency() const {return GetRuntimeConfig().bCaptureTranslucency;}
+    /** 获取当前实例的加法覆盖率重建开关。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") bool GetPreserveAdditiveEffects() const {return GetRuntimeConfig().bPreserveAdditiveEffects;}
+    /** 获取当前实例的加法覆盖率强度。 */
+    UFUNCTION(BlueprintPure,Category="Desktop Pet|Configuration") float GetAdditiveAlphaStrength() const {return GetRuntimeConfig().AdditiveAlphaStrength;}
+
     /** 整组应用所有参数；合并到下一 Tick，避免在 UMG 回调内销毁绘制资源。 */
     UFUNCTION(BlueprintCallable,Category="Desktop Pet|Configuration") void ApplyRuntimeConfig(const FDesktopPetConfig& Config);
     /** 设置未缩放的逻辑画布大小，UI 布局以此为准。 */
@@ -132,14 +201,8 @@ public:
     UFUNCTION(BlueprintPure,Category="Desktop Pet|UI") float GetInteractionProgress() const;
     /** 查询已输出帧数量。 */
     UFUNCTION(BlueprintPure,Category="Desktop Pet|Diagnostics") int64 GetPresentedFrameCount() const;
-    /** C++ 原生集成入口；项目自测据此验证 Windows 命中，不暴露 HWND 给蓝图。 */
+    /** C++ 原生 Windows 集成入口，不将 HWND 暴露给蓝图。 */
     void* GetNativeWindowHandle() const;
-    /** 诊断读取最终场景 Alpha，不含 UMG。 */
-    uint8 GetSceneAlphaAt(FIntPoint Pixel) const;
-    /** 诊断读取实际交给 Windows 的最终 Alpha，包含 UMG，适合验证透明点。 */
-    uint8 GetCompositedAlphaAt(FIntPoint Pixel) const;
-    /** 项目自动测试使用的指针覆盖；Shipping 构建忽略它。 */
-    void DebugSetPointerOverride(TOptional<FVector2D> Position);
     virtual void Tick(float DeltaSeconds) override;
 protected:
     virtual void BeginPlay() override;
@@ -154,5 +217,14 @@ private:
     FDesktopPetConfig DesiredConfig;
     bool bHasConfig=false,bConfigPending=false,bWidgetPending=false,bRestartRequested=false;
     TSharedPtr<FDesktopPetRuntime> Runtime;
+    /** 悬停不延长 Actor 生命周期；销毁通知在对象失效之前清理事件状态。 */
+    UPROPERTY(Transient) TWeakObjectPtr<AActor> HoveredInteractionActor;
+    bool bStopping=false;
+    /** 根据捕获相机和已显示组件查询最近的有效对象，再应用交互白名单。 */
+    AActor* TraceInteractionActor(FVector2D UV) const;
+    /** 处理 A→B、Actor→UI 等状态迁移，保证先 Leave 再 Enter。 */
+    void UpdateHoveredActor(AActor* Actor);
+    /** 被悬停对象销毁时发出最后一次离开，防止悬停状态残留。 */
+    UFUNCTION() void HandleHoveredActorDestroyed(AActor* Actor);
     friend struct FDesktopPetRuntime;
 };
