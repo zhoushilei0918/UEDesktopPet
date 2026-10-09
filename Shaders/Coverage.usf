@@ -1,0 +1,16 @@
+// 逆 Z 深度的背景为 0；只读取标准场景深度，兼容原版及定制 UE。
+#include "/Engine/Private/Common.ush"
+Texture2D<float> SceneDepth;
+Texture2D<float4> RawOpacity;
+RWTexture2D<float> OutputCoverage;
+int2 OutputSize;
+
+[numthreads(8,8,1)]
+void MainCS(uint3 ThreadId : SV_DispatchThreadID)
+{
+    if(any(ThreadId.xy >= (uint2)OutputSize)) return;
+    int2 ViewMin=View.ViewRectMinAndSize.xy; int2 ViewSize=View.ViewRectMinAndSize.zw;
+    int2 P=ViewMin+min(int2((float2(ThreadId.xy)+0.5)*float2(ViewSize)/float2(OutputSize)),ViewSize-1);
+    // 深度命中写反透明度 0，否则直接搬运原 FP16 Alpha，完全保留其精度。
+    OutputCoverage[ThreadId.xy]=SceneDepth.Load(int3(P,0))>0.0 ? 0.0 : RawOpacity.Load(int3(ThreadId.xy,0)).a;
+}

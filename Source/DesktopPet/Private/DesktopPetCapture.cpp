@@ -1,13 +1,28 @@
 ﻿#include "DesktopPetActor.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "HAL/IConsoleManager.h"
 
 // 使用引擎实际的色调映射/调色链；不用 CPU 近似公式替代定制引擎的后处理。
 void ADesktopPetActor::ConfigureCapturePipeline()
 {
-    const FDesktopPetConfig Config=GetRuntimeConfig();
-    Capture->CaptureSource=Config.bUseEnginePostProcessing?SCS_FinalToneCurveHDR:SCS_SceneColorHDR;
-    Capture->TextureTarget=Config.bUseEnginePostProcessing?FinalColorTarget:SceneTarget;
+    const FDesktopPetConfig Config=PetGetRuntimeConfig();
+    Capture->CaptureSource=SCS_FinalToneCurveHDR;
+    Capture->TextureTarget=FinalColorTarget;
+    auto& PP=Capture->PostProcessSettings;
+    if(!PP.bOverride_DynamicGlobalIlluminationMethod)
+    {
+        if(auto* C=IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicGlobalIlluminationMethod")))
+        {PP.bOverride_DynamicGlobalIlluminationMethod=true;PP.DynamicGlobalIlluminationMethod=static_cast<EDynamicGlobalIlluminationMethod::Type>(C->GetInt());}
+    }
+    if(!PP.bOverride_ReflectionMethod)
+    {
+        if(auto* C=IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod")))
+        {PP.bOverride_ReflectionMethod=true;PP.ReflectionMethod=static_cast<EReflectionMethod::Type>(C->GetInt());}
+    }
+    // SceneCapture 默认使用半分辨率 Lumen Surface Cache，这里与常规视图对齐。
+    if(!PP.bOverride_LumenSurfaceCacheResolution){PP.bOverride_LumenSurfaceCacheResolution=true;PP.LumenSurfaceCacheResolution=1.f;}
+    Capture->bUseRayTracingIfEnabled=true;
     Capture->CompositeMode=SCCM_Overwrite;
     Capture->bAlwaysPersistRenderingState=true;
     // 大气和雾会填满透明背景；时间性 AA 与独立覆盖率不一致，轮廓继续使用 SSAA。
@@ -16,9 +31,9 @@ void ADesktopPetActor::ConfigureCapturePipeline()
     Capture->ShowFlags.SetTemporalAA(false);Capture->ShowFlags.SetAntiAliasing(false);
     Capture->ShowFlags.SetPostProcessing(true);
     Capture->ShowFlags.SetTonemapper(true);
-    Capture->ShowFlags.SetEyeAdaptation(Config.bUseEnginePostProcessing);
-    Capture->ShowFlags.SetBloom(Config.bUseEnginePostProcessing);
-    Capture->ShowFlags.SetScreenSpaceReflections(Config.bUseEnginePostProcessing);
+    Capture->ShowFlags.SetEyeAdaptation(true);
+    Capture->ShowFlags.SetBloom(true);
+    Capture->ShowFlags.SetScreenSpaceReflections(true);
     Capture->ShowFlags.SetParticles(true);Capture->ShowFlags.SetNiagara(true);
     Capture->ShowFlags.SetTranslucency(Config.bCaptureTranslucency);
     Capture->ShowFlags.SetSeparateTranslucency(Config.bCaptureTranslucency);
@@ -59,10 +74,9 @@ void ADesktopPetActor::SyncOpacityCapture()
     OpacityCapture->bAlwaysPersistRenderingState=true;
     // 覆盖率不需要色调映射；同一份后处理参数仍供投影和材质相关路径使用。
     OpacityCapture->PostProcessSettings=Capture->PostProcessSettings;
-    OpacityCapture->PostProcessBlendWeight=Capture->PostProcessBlendWeight;
-}
-
-void ADesktopPetActor::SetUseEnginePostProcessing(bool Value)
-{
-    auto Config=GetRuntimeConfig();Config.bUseEnginePostProcessing=Value;ApplyRuntimeConfig(Config);
+    OpacityCapture->PostProcessBlendWeight=1.f;
+    OpacityCapture->PostProcessSettings.bOverride_DynamicGlobalIlluminationMethod=true;
+    OpacityCapture->PostProcessSettings.DynamicGlobalIlluminationMethod=EDynamicGlobalIlluminationMethod::None;
+    OpacityCapture->PostProcessSettings.bOverride_ReflectionMethod=true;
+    OpacityCapture->PostProcessSettings.ReflectionMethod=EReflectionMethod::None;
 }

@@ -6,7 +6,7 @@ public class DesktopPet : ModuleRules
     {
         PCHUsage=PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[]{"Core","CoreUObject","Engine","DeveloperSettings","UMG","InputCore"});
-        PrivateDependencyModuleNames.AddRange(new[]{"DesktopPetBootstrap","Slate","SlateCore","ApplicationCore","RenderCore","RHI","ImageWrapper","Json"});
+        PrivateDependencyModuleNames.AddRange(new[]{"DesktopPetBootstrap","Slate","SlateCore","ApplicationCore","RenderCore","RHI","ImageWrapper","Json","Renderer","Projects"});
         PublicSystemLibraries.AddRange(new[]{"user32.lib","gdi32.lib"});
     }
 }

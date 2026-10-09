@@ -82,12 +82,18 @@ namespace
     }
 }
 
-// 仅打包游戏启用：编辑器、命令行烘焙和专用服务器不安装窗口防护。
+// 打包游戏和 -game 独立游戏启用；编辑器工作台、烘焙和专用服务器不安装防护。
 void FDesktopPetWindowGuard::Startup()
 {
-#if !WITH_EDITOR && !IS_PROGRAM
+#if !IS_PROGRAM
+#if WITH_EDITOR
+    if(!FParse::Param(FCommandLine::Get(),TEXT("game")))return;
+#endif
     if(IsRunningCommandlet()||IsRunningDedicatedServer())return;
     if(GConfig)GConfig->GetBool(TEXT("/Script/DesktopPet.DesktopPetSettings"),TEXT("bHideGameWindow"),bHide,GGameIni);
+    bool Transparent=true;
+    if(GConfig)GConfig->GetBool(TEXT("/Script/DesktopPet.DesktopPetSettings"),TEXT("bTransparentWindowEnabled"),Transparent,GGameIni);
+    bHide=bHide&&Transparent&&!FParse::Param(FCommandLine::Get(),TEXT("PetOpaque"));
     // 游戏窗口防护启用时也关闭启动画面，避免桌宠启动前显示 UE Splash。
     if(bHide&&!FParse::Param(FCommandLine::Get(),TEXT("nosplash")))FCommandLine::Append(TEXT(" -nosplash"));
     CreateHook=SetWindowsHookExW(WH_CBT,CreateProc,nullptr,GetCurrentThreadId());

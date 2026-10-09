@@ -1,3 +1,18 @@
-﻿#include "Modules/ModuleManager.h"
-// 通用模块由 Actor 按需启动；不自动创建角色、菜单或测试场景。
-IMPLEMENT_MODULE(FDefaultModuleImpl, DesktopPet)
+#include "Modules/ModuleManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "ShaderCore.h"
+
+/** 着色器随插件分发，使用公开虚拟路径映射，无任何项目内容资产依赖。 */
+class FDesktopPetModule : public IModuleInterface
+{
+public:
+    virtual void StartupModule() override
+    {
+        // 重定向由 Config/DefaultDesktopPet.ini 随引擎对象系统初始化加载。
+        // 此模块为 Shader 提前加载，不能在 PostConfigInit 阶段调用 CoreRedirects API。
+        const auto Plugin=IPluginManager::Get().FindPlugin(TEXT("DesktopPet"));
+        if(Plugin.IsValid())AddShaderSourceDirectoryMapping(TEXT("/Plugin/DesktopPet"),FPaths::Combine(Plugin->GetBaseDir(),TEXT("Shaders")));
+    }
+};
+IMPLEMENT_MODULE(FDesktopPetModule,DesktopPet)

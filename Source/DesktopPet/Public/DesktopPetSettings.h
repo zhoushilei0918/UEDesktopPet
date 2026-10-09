@@ -12,6 +12,16 @@ class DESKTOPPET_API UDesktopPetSettings : public UDeveloperSettings
 public:
     /** 在项目设置的 Plugins 分类中注册。 */
     UDesktopPetSettings() { CategoryName=TEXT("Plugins"); }
+    /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
+    UPROPERTY(Config, EditAnywhere, Category="Window") bool bTransparentWindowEnabled=true;
+    /** 尺寸变化时保持窗口中心；显式同时修改位置时以传入位置为准。 */
+    UPROPERTY(Config, EditAnywhere, Category="Window") bool bCenterAnchoredScaling=true;
+    /** 在人物上滚动鼠标滚轮时自动缩放，无需增强输入。 */
+    UPROPERTY(Config, EditAnywhere, Category="Input") bool bEnableWheelZoom=true;
+    /** 每格滚轮的相对缩放量，例如 0.1 表示约 10%。 */
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0.01",ClampMax="0.5")) float WheelZoomStep=0.1f;
+    /** 仅在不透明内部做受限锐化，保留边缘 Alpha，0 表示关闭。 */
+    UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="0",ClampMax="1")) float Sharpness=0.2f;
     /** 窗口的逻辑画布尺寸；最终物理尺寸还要乘以 DisplayScale。 */
     UPROPERTY(Config, EditAnywhere, Category="Window")
     FIntPoint WindowSize = FIntPoint(600,760);
@@ -27,12 +37,9 @@ public:
     /** 隐藏、禁用 UE 游戏窗口并从任务栏/Alt+Tab 中排除；不影响编辑器主窗口。 */
     UPROPERTY(Config, EditAnywhere, Category="Window")
     bool bHideGameWindow = true;
-    /** 是否允许 BeginWindowDrag 启动拖拽。 */
+    /** 是否允许 PetBeginWindowDrag 启动拖拽。 */
     UPROPERTY(Config, EditAnywhere, Category="Input")
     bool bDraggable = true;
-    /** 人物区域左键是否自动开始拖拽；接增强输入时可关闭并自行调用接口。 */
-    UPROPERTY(Config, EditAnywhere, Category="Input")
-    bool bAutoDragOnPrimaryButton = true;
     /** 用户关闭桌宠时是否退出游戏进程；编辑器 PIE 不退出编辑器。 */
     UPROPERTY(Config, EditAnywhere, Category="Window")
     bool bExitApplicationOnClose = true;
@@ -45,9 +52,6 @@ public:
     /** 捕获颜色的曝光倍数，修改后下一帧生效。 */
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="0.01",ClampMax="16"))
     float Exposure = 1.f;
-    /** 使用引擎后处理输出，并通过独立捕获保留透明轮廓。 */
-    UPROPERTY(Config, EditAnywhere, Category="Quality")
-    bool bUseEnginePostProcessing = true;
     /** 启用按命中阈值和 UI 命中判定的额外穿透；零 Alpha 像素始终由 Windows 穿透。 */
     UPROPERTY(Config, EditAnywhere, Category="Input")
     bool bClickThroughTransparentPixels = true;
