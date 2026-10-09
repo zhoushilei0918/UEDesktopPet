@@ -1,4 +1,4 @@
-﻿#include "DesktopPetActor.h"
+#include "DesktopPetActor.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "HAL/IConsoleManager.h"
@@ -9,19 +9,8 @@ void ADesktopPetActor::ConfigureCapturePipeline()
     const FDesktopPetConfig Config=PetGetRuntimeConfig();
     Capture->CaptureSource=SCS_FinalToneCurveHDR;
     Capture->TextureTarget=FinalColorTarget;
-    auto& PP=Capture->PostProcessSettings;
-    if(!PP.bOverride_DynamicGlobalIlluminationMethod)
-    {
-        if(auto* C=IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicGlobalIlluminationMethod")))
-        {PP.bOverride_DynamicGlobalIlluminationMethod=true;PP.DynamicGlobalIlluminationMethod=static_cast<EDynamicGlobalIlluminationMethod::Type>(C->GetInt());}
-    }
-    if(!PP.bOverride_ReflectionMethod)
-    {
-        if(auto* C=IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod")))
-        {PP.bOverride_ReflectionMethod=true;PP.ReflectionMethod=static_cast<EReflectionMethod::Type>(C->GetInt());}
-    }
-    // SceneCapture 默认使用半分辨率 Lumen Surface Cache，这里与常规视图对齐。
-    if(!PP.bOverride_LumenSurfaceCacheResolution){PP.bOverride_LumenSurfaceCacheResolution=true;PP.LumenSurfaceCacheResolution=1.f;}
+    // GI/反射在 ViewExtension 中逐帧继承，不向组件写入持久覆盖标记。
+    // 光追仍受项目/RHI 能力控制；此开关仅允许捕获使用已启用的光追。
     Capture->bUseRayTracingIfEnabled=true;
     Capture->CompositeMode=SCCM_Overwrite;
     Capture->bAlwaysPersistRenderingState=true;
@@ -65,6 +54,10 @@ void ADesktopPetActor::SyncOpacityCapture()
     OpacityCapture->LODDistanceFactor=Capture->LODDistanceFactor;
     OpacityCapture->MaxViewDistanceOverride=Capture->MaxViewDistanceOverride;
     OpacityCapture->ShowFlags=Capture->ShowFlags;
+    // 颜色来自主捕获；覆盖率通道不消费灯光颜色，避免为它重复构建虚拟阴影缓存。
+    OpacityCapture->ShowFlags.SetLighting(false);
+    OpacityCapture->ShowFlags.SetDynamicShadows(false);
+    OpacityCapture->bUseRayTracingIfEnabled=false;
     OpacityCapture->ShowFlags.SetEyeAdaptation(false);
     OpacityCapture->ShowFlags.SetBloom(false);
     OpacityCapture->ShowFlags.SetScreenSpaceReflections(false);

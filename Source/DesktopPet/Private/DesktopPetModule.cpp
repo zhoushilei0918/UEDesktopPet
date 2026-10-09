@@ -2,11 +2,14 @@
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
+#include "DesktopPetMemory.h"
 
 /** 着色器随插件分发，使用公开虚拟路径映射，无任何项目内容资产依赖。 */
 class FDesktopPetModule : public IModuleInterface
 {
 public:
+    // 撤销插件自己的全局 CVar 层，避免模块卸载后仍残留预算。
+    virtual void ShutdownModule() override {FDesktopPetMemory::Shutdown();}
     virtual void StartupModule() override
     {
         // 重定向由 Config/DefaultDesktopPet.ini 随引擎对象系统初始化加载。

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/EngineTypes.h"
@@ -150,6 +150,23 @@ public:
     /** 获取当前实例的加法覆盖率强度。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Configuration") float PetGetAdditiveAlphaStrength() const {return PetGetRuntimeConfig().AdditiveAlphaStrength;}
 
+    /** 开关紧凑缓存预算，下一 Tick 应用；全局 CVar 由所有运行中的桌宠共同协商。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Memory") void PetSetCompactMemory(bool bEnabled);
+    /** 配置缓存容量上限，自动向上取整到二次幂；不会修改 SSAA、曝光、Lumen 质量或材质。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Memory") void PetSetMemoryCapacities(int32 ShadowPages,int32 SurfaceAtlasSize,int32 RadianceProbes,int32 IdlePoolMB=64);
+    /** 获取当前实例的 bCompactMemory 配置；实际全局值可能被其他宿主或控制台的更高优先级设置覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") bool PetGetCompactMemory() const {return PetGetRuntimeConfig().bCompactMemory;}
+    /** 获取当前实例的 ShadowPageCapacity 配置；实际全局值可能被其他宿主或控制台的更高优先级设置覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") int32 PetGetShadowPageCapacity() const {return PetGetRuntimeConfig().ShadowPageCapacity;}
+    /** 获取当前实例的 SurfaceCacheCapacity 配置；实际全局值可能被其他宿主或控制台的更高优先级设置覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") int32 PetGetSurfaceCacheCapacity() const {return PetGetRuntimeConfig().SurfaceCacheCapacity;}
+    /** 获取当前实例的 RadianceProbeCapacity 配置；实际全局值可能被其他宿主或控制台的更高优先级设置覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") int32 PetGetRadianceProbeCapacity() const {return PetGetRuntimeConfig().RadianceProbeCapacity;}
+    /** 获取当前实例的 IdleRenderTargetPoolMB 配置；实际全局值可能被其他宿主或控制台的更高优先级设置覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") int32 PetGetIdleRenderTargetPoolMB() const {return PetGetRuntimeConfig().IdleRenderTargetPoolMB;}
+    /** 当前实例是否参与全局紧凑缓存协商；不代表显存硬限制或每个 CVar 均未被控制台覆盖。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Memory") bool PetIsCompactMemoryActive() const;
+
     /** 整组应用所有参数；合并到下一 Tick，避免在 UMG 回调内销毁绘制资源。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Configuration") void PetApplyRuntimeConfig(const FDesktopPetConfig& Config);
     /** 设置未缩放的逻辑画布大小，UI 布局以此为准。 */
@@ -262,6 +279,16 @@ public:
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Input") float PetGetWheelZoomStep() const {return PetGetRuntimeConfig().WheelZoomStep;}
     /** 设置滚轮缩放步长。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Input") void PetSetWheelZoomStep(float Value);
+    /** 增强输入也可调用；ScreenPosition 为物理屏幕坐标，仅命中可见 Actor 且未被 UI 遮挡时接受。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Input") bool PetZoomAtScreenPosition(float WheelDelta,FVector2D ScreenPosition);
+    /** 当前是否正在执行鼠标锚点平滑缩放。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Input") bool PetIsZooming() const;
+    /** 连续滚轮积累后的目标倍率；PetGetDisplayScale 返回当前已显示的倍率。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Input") float PetGetZoomTargetScale() const;
+    /** 运行时设置鼠标缩放动画时长。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Input") void PetSetZoomAnimationSeconds(float Value);
+    /** 获取鼠标缩放动画时长。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Input") float PetGetZoomAnimationSeconds() const {return PetGetRuntimeConfig().ZoomAnimationSeconds;}
     virtual void Tick(float DeltaSeconds) override;
 protected:
     virtual void BeginPlay() override;

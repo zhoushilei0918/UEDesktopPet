@@ -1,4 +1,5 @@
 ﻿#include "DesktopPetWindowGuard.h"
+#include "DesktopPetStartupMemory.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CommandLine.h"
@@ -154,7 +155,7 @@ FDesktopPetGameWindowState FDesktopPetWindowGuard::GetState()
 class FDesktopPetBootstrapModule : public IModuleInterface
 {
 public:
-    virtual void StartupModule() override { FDesktopPetWindowGuard::Startup(); }
-    virtual void ShutdownModule() override { FDesktopPetWindowGuard::Shutdown(); }
+    virtual void StartupModule() override { FDesktopPetWindowGuard::Startup(); FDesktopPetStartupMemory::Startup(); }
+    virtual void ShutdownModule() override { FDesktopPetStartupMemory::Shutdown(); FDesktopPetWindowGuard::Shutdown(); }
 };
 IMPLEMENT_MODULE(FDesktopPetBootstrapModule,DesktopPetBootstrap)

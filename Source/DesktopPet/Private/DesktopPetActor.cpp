@@ -1,5 +1,6 @@
-﻿#include "DesktopPetActor.h"
+#include "DesktopPetActor.h"
 #include "DesktopPetSettings.h"
+#include "DesktopPetMemory.h"
 #include "DesktopPetRuntime.h"
 #include "Components/PrimitiveComponent.h"
 
@@ -51,6 +52,7 @@ bool ADesktopPetActor::PetStartDesktopWindow()
         FParse::Value(FCommandLine::Get(),TEXT("PetFPS="),DesiredConfig.TargetFrameRate);
         DesiredConfig.bWriteDiagnostics|=FParse::Param(FCommandLine::Get(),TEXT("PetDiagnostics"));
         if(FParse::Param(FCommandLine::Get(),TEXT("PetOpaque")))DesiredConfig.bTransparentWindowEnabled=false;
+        if(FParse::Param(FCommandLine::Get(),TEXT("PetFullMemory")))DesiredConfig.bCompactMemory=false;
         DesiredConfig.Normalize();bHasConfig=true;
     }
     InitialCaptureTransform=Capture->GetComponentTransform();InitialOrbitRotation=OrbitRotation;InitialOrbitDistance=OrbitDistance;
@@ -62,6 +64,7 @@ bool ADesktopPetActor::PetStartDesktopWindow()
     }
     Runtime=MakeShared<FDesktopPetRuntime>();Runtime->Owner=this;
     if(!Runtime->Create(DesiredConfig)){Runtime.Reset();return false;}
+    FDesktopPetMemory::Update(this,DesiredConfig);
     SceneTarget=NewObject<UTextureRenderTarget2D>(this);
     SceneTarget->ClearColor=FLinearColor(0,0,0,1);
     SceneTarget->InitCustomFormat(Runtime->Width*Runtime->Scale,Runtime->Height*Runtime->Scale,PF_FloatRGBA,true);
@@ -74,7 +77,7 @@ bool ADesktopPetActor::PetStartDesktopWindow()
     GeometryTarget->ClearColor=FLinearColor::White;GeometryTarget->bCanCreateUAV=true;
     GeometryTarget->InitCustomFormat(Runtime->Width*Runtime->Scale,Runtime->Height*Runtime->Scale,PF_R16F,true);
     GeometryTarget->UpdateResourceImmediate(true);
-    ViewExtension=FSceneViewExtensions::NewExtension<FDesktopPetViewExtension>(FinalColorTarget->GameThread_GetRenderTargetResource(),GeometryTarget->GameThread_GetRenderTargetResource(),SceneTarget->GameThread_GetRenderTargetResource());
+    ViewExtension=FSceneViewExtensions::NewExtension<FDesktopPetViewExtension>(FinalColorTarget->GameThread_GetRenderTargetResource(),GeometryTarget->GameThread_GetRenderTargetResource(),SceneTarget->GameThread_GetRenderTargetResource(),this);
     OpacityCapture=NewObject<USceneCaptureComponent2D>(this,NAME_None,RF_Transient);
     OpacityCapture->bCaptureEveryFrame=false;
     OpacityCapture->bCaptureOnMovement=false;
@@ -102,6 +105,7 @@ void ADesktopPetActor::PetStopDesktopWindow()
     if(Capture)Capture->TextureTarget=nullptr;
     if(OpacityCapture){OpacityCapture->TextureTarget=nullptr;OpacityCapture->DestroyComponent();OpacityCapture=nullptr;}
     SceneTarget=nullptr;FinalColorTarget=nullptr;GeometryTarget=nullptr;UITarget=nullptr;
+    FDesktopPetMemory::Release(this);
     bStopping=false;
 }
 // 仅显式重启才替换 HWND；尺寸和 SSAA 的运行时更改不走这里。
@@ -117,12 +121,14 @@ FDesktopPetConfig ADesktopPetActor::PetGetDefaultRuntimeConfig(){return GetDefau
 FDesktopPetConfig ADesktopPetActor::PetGetRuntimeConfig() const
 {
     FDesktopPetConfig Result=bHasConfig?DesiredConfig:(bOverrideDefaultConfig?InitialConfig:PetGetDefaultRuntimeConfig());
-    if(Runtime&&!bConfigPending)Result.WindowPosition=PetGetWindowPosition();
+    if(Runtime&&!bConfigPending)
+    {Result.WindowPosition=PetGetWindowPosition();Result.DisplayScale=Runtime->PresentedScale;}
     return Result;
 }
-// 任何字段都可通过整组配置运行时修改；配置只属于本实例。
+// 任何字段都可通过整组配置运行时修改；普通参数属于实例，Memory 字段由全局协调器协商。
 void ADesktopPetActor::PetApplyRuntimeConfig(const FDesktopPetConfig& Config)
 {
+    if(Runtime)Runtime->ZoomCommitPending=false;
     const FDesktopPetConfig Before=PetGetRuntimeConfig();
     DesiredConfig=Config;DesiredConfig.Normalize();
     if(DesiredConfig.bCenterAnchoredScaling&&DesiredConfig.WindowPosition==Before.WindowPosition)
@@ -149,7 +155,7 @@ void ADesktopPetActor::PetSetDisplaySize(FIntPoint Size)
     C.WindowSize=FIntPoint(FMath::RoundToInt(Size.X/C.DisplayScale),FMath::RoundToInt(Size.Y/C.DisplayScale));
     PetApplyRuntimeConfig(C);
 }
-FIntPoint ADesktopPetActor::PetGetDisplaySize() const{return PetGetRuntimeConfig().GetDisplaySize();}
+FIntPoint ADesktopPetActor::PetGetDisplaySize() const{return Runtime&&!bConfigPending?Runtime->DisplaySize:PetGetRuntimeConfig().GetDisplaySize();}
 // 读真实 HWND 坐标，使拖拽之后再改质量不会把窗口跳回初始位置。
 FIntPoint ADesktopPetActor::PetGetWindowPosition() const
 {
@@ -196,12 +202,15 @@ void ADesktopPetActor::Tick(float Delta)
     }
     if(bConfigPending)
     {
-        bConfigPending=false;Runtime->ApplyConfig(DesiredConfig);
+        bConfigPending=false;
+        FDesktopPetMemory::Update(this,DesiredConfig);
+        Runtime->ApplyConfig(DesiredConfig);
         PetRuntimeConfigApplied.Broadcast(DesiredConfig);
     }
     if(Runtime!=FrameRuntime)return;
     UpdateOrbitCamera();UpdateDebugCamera();
     if(bWidgetPending){bWidgetPending=false;Runtime->SetWidget();}
+    FrameRuntime->UpdateZoom();
     FrameRuntime->PollInput(Delta);
     if(Runtime!=FrameRuntime)return;
     FrameRuntime->CaptureFrame(Delta);
@@ -282,3 +291,23 @@ void ADesktopPetActor::PetSetWriteDiagnostics(bool Value)
 {
     auto C=PetGetRuntimeConfig();C.bWriteDiagnostics=Value;PetApplyRuntimeConfig(C);
 }
+
+// 所有快捷节点最终走同一配置应用路径，运行时切换不重建窗口。
+void ADesktopPetActor::PetSetCompactMemory(bool bEnabled)
+{
+    auto C=PetGetRuntimeConfig();C.bCompactMemory=bEnabled;PetApplyRuntimeConfig(C);
+}
+void ADesktopPetActor::PetSetMemoryCapacities(int32 ShadowPages,int32 SurfaceAtlasSize,int32 RadianceProbes,int32 IdlePoolMB)
+{
+    auto C=PetGetRuntimeConfig();C.ShadowPageCapacity=ShadowPages;C.SurfaceCacheCapacity=SurfaceAtlasSize;
+    C.RadianceProbeCapacity=RadianceProbes;C.IdleRenderTargetPoolMB=IdlePoolMB;PetApplyRuntimeConfig(C);
+}
+bool ADesktopPetActor::PetIsCompactMemoryActive() const {return FDesktopPetMemory::IsActive(this);}
+
+// 原生滚轮与增强输入共用同一入口、命中规则和物理屏幕坐标，不需要再连接缩放 Setter。
+bool ADesktopPetActor::PetZoomAtScreenPosition(float WheelDelta,FVector2D ScreenPosition)
+{return Runtime&&Runtime->ZoomAtScreenPosition(WheelDelta,ScreenPosition);}
+bool ADesktopPetActor::PetIsZooming() const{return Runtime&&Runtime->Zooming;}
+float ADesktopPetActor::PetGetZoomTargetScale() const{return Runtime&&Runtime->Zooming?Runtime->ZoomTargetScale:PetGetDisplayScale();}
+void ADesktopPetActor::PetSetZoomAnimationSeconds(float Value)
+{auto C=PetGetRuntimeConfig();C.ZoomAnimationSeconds=Value;PetApplyRuntimeConfig(C);}

@@ -4,6 +4,9 @@
 #include "RenderGraphUtils.h"
 #include "SceneView.h"
 #include "TextureResource.h"
+#include "DesktopPetActor.h"
+#include "DesktopPetRenderPolicy.h"
+#include "Components/SceneCaptureComponent2D.h"
 
 /** 深度覆盖率保留黑色描边，不通过亮度猜测不透明轮廓。 */
 class FDesktopPetCoverageCS : public FGlobalShader
@@ -22,8 +25,32 @@ class FDesktopPetCoverageCS : public FGlobalShader
 };
 IMPLEMENT_GLOBAL_SHADER(FDesktopPetCoverageCS,"/Plugin/DesktopPet/Coverage.usf","MainCS",SF_Compute);
 
-FDesktopPetViewExtension::FDesktopPetViewExtension(const FAutoRegister& Register,FTextureRenderTargetResource* Color,FTextureRenderTargetResource* Geometry,FTextureRenderTargetResource* Opacity)
-    :FSceneViewExtensionBase(Register),ColorResource(Color),GeometryResource(Geometry),OpacityResource(Opacity){}
+FDesktopPetViewExtension::FDesktopPetViewExtension(const FAutoRegister& Register,FTextureRenderTargetResource* Color,FTextureRenderTargetResource* Geometry,FTextureRenderTargetResource* Opacity,ADesktopPetActor* Host)
+    :FSceneViewExtensionBase(Register),Owner(Host),ColorResource(Color),GeometryResource(Geometry),OpacityResource(Opacity){}
+
+// 只修正自己的离屏视图，不改主视口、项目 CVar、组件后处理设置或定制后处理链。
+void FDesktopPetViewExtension::SetupView(FSceneViewFamily& Family,FSceneView& View)
+{
+    ADesktopPetActor* Host=Owner.Get();
+    if(!Host||(Family.RenderTarget!=ColorResource&&Family.RenderTarget!=OpacityResource))return;
+    if(Family.RenderTarget==ColorResource)
+    {
+        const auto Policy=FDesktopPetRenderPolicy::Resolve(Host->Capture);
+        View.FinalPostProcessSettings.DynamicGlobalIlluminationMethod=Policy.GI;
+        View.FinalPostProcessSettings.ReflectionMethod=Policy.Reflections;
+        View.FinalPostProcessSettings.LumenSurfaceCacheResolution=Policy.SurfaceResolution;
+        LastViewGI=View.FinalPostProcessSettings.DynamicGlobalIlluminationMethod;LastViewReflections=View.FinalPostProcessSettings.ReflectionMethod;
+    }
+    if(!Host->Capture->bUseCustomProjectionMatrix)
+    {
+        // 始终使用逻辑画布宽高比：整数尺寸取整不能改变相机取景，再渲染时才不会回跳。
+        const FIntPoint Canvas=Host->PetGetRuntimeConfig().WindowSize;
+        const FIntPoint Size=Family.RenderTarget->GetSizeXY();
+        FMatrix Projection=View.ProjectionMatrixUnadjustedForRHI;
+        Projection.M[1][1]*=(double(Canvas.X)/Canvas.Y)/(double(Size.X)/Size.Y);
+        View.UpdateProjectionMatrix(Projection);
+    }
+}
 
 // 此时不透明及自定义描边已经写完深度；颜色仍继续走引擎完整后处理直到最终目标。
 void FDesktopPetViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass Pass,const FSceneView& View,FPostProcessingPassDelegateArray& Callbacks,bool Enabled)

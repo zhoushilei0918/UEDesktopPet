@@ -1,8 +1,9 @@
-﻿#include "DesktopPetActor.h"
+#include "DesktopPetActor.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 // 可见名单就是默认交互名单；不要求角色创建 Physics Asset 或配置碰撞通道。
 TArray<AActor*> ADesktopPetActor::PetGetInteractionActors() const
@@ -26,6 +27,12 @@ AActor* ADesktopPetActor::TraceInteractionActor(FVector2D UV) const
     const TArray<AActor*> Actors=PetGetInteractionActors();
     if(Actors.IsEmpty()||!GetWorld())return nullptr;
     if(Actors.Num()==1)return Actors[0];
+    if(!Capture->bUseCustomProjectionMatrix&&Capture->TextureTarget)
+    {
+        const FIntPoint Canvas=PetGetRuntimeConfig().WindowSize;
+        const double RenderAspect=double(Capture->TextureTarget->SizeX)/Capture->TextureTarget->SizeY;
+        UV.Y=.5+(UV.Y-.5)*RenderAspect/(double(Canvas.X)/Canvas.Y);
+    }
     FVector Start,Direction;
     if(!UGameplayStatics::DeprojectSceneCaptureComponentToWorld(Capture,UV,Start,Direction))return nullptr;
     const FVector End=Start+Direction*10000000.f;

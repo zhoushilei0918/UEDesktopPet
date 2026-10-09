@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "DesktopPetTypes.h"
@@ -14,12 +14,14 @@ public:
     UDesktopPetSettings() { CategoryName=TEXT("Plugins"); }
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(Config, EditAnywhere, Category="Window") bool bTransparentWindowEnabled=true;
-    /** 尺寸变化时保持窗口中心；显式同时修改位置时以传入位置为准。 */
+    /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
     UPROPERTY(Config, EditAnywhere, Category="Window") bool bCenterAnchoredScaling=true;
     /** 在人物上滚动鼠标滚轮时自动缩放，无需增强输入。 */
     UPROPERTY(Config, EditAnywhere, Category="Input") bool bEnableWheelZoom=true;
     /** 每格滚轮的相对缩放量，例如 0.1 表示约 10%。 */
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0.01",ClampMax="0.5")) float WheelZoomStep=0.1f;
+    /** 鼠标锚点缩放的过渡秒数；使用真实时间，不受游戏时间倍率影响，0 表示立即完成。 */
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0",ClampMax="1")) float ZoomAnimationSeconds=0.18f;
     /** 仅在不透明内部做受限锐化，保留边缘 Alpha，0 表示关闭。 */
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="0",ClampMax="1")) float Sharpness=0.2f;
     /** 窗口的逻辑画布尺寸；最终物理尺寸还要乘以 DisplayScale。 */
@@ -79,6 +81,22 @@ public:
     /** 可选的项目 Widget 类；为空时允许纯人物/纯特效运行，不创建任何默认菜单。 */
     UPROPERTY(Config, EditAnywhere, Category="UI")
     TSoftClassPtr<class UUserWidget> WidgetClass;
+    /** 小型桌宠缓存预算：只在隐藏主窗口的独立游戏中生效；PIE 和普通调试窗口保持项目原值。大型场景可关闭或增加容量。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory") bool bCompactMemory = true;
+    /** VSM 阴影页池容量上限，不修改每页精度；页数不足时引擎会降级，增加灯光/模型后应重新评估。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory", meta=(ClampMin="512",ClampMax="16384")) int32 ShadowPageCapacity = 512;
+    /** Lumen 表面缓存图集的边长上限，不修改单张 Card 的采样密度；复杂场景需要更大的图集。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory", meta=(ClampMin="1024",ClampMax="8192")) int32 SurfaceCacheCapacity = 1024;
+    /** Lumen 辐射缓存图集每轴的探针数上限，不修改单探针分辨率；有效容量为此值的平方。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory", meta=(ClampMin="64",ClampMax="256")) int32 RadianceProbeCapacity = 64;
+    /** 可复用渲染目标池保留的最低容量（MiB），不是硬上限；正在使用的纹理永远不会因此被释放。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory", meta=(ClampMin="0",ClampMax="1000")) int32 IdleRenderTargetPoolMB = 64;
+    /** 启动时采用较小的分配块，并启用 Cascade 粒子按需扩容；不改变分辨率/采样/粒子数量。引擎在初始化时读取，修改后须重启进程。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory|Startup", meta=(ConfigRestartRequired=true)) bool bCompactStartupAllocations = true;
+    /** D3D12 瞬态堆的最小分配块，单位 MiB；按需继续增长，不是总量限制。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory|Startup", meta=(ClampMin="16",ClampMax="128",ConfigRestartRequired=true)) int32 TransientHeapChunkMB = 16;
+    /** D3D12 只读纹理池的最小分配块，单位 MiB；不限制贴图尺寸或驻留 mip。 */
+    UPROPERTY(Config, EditAnywhere, Category="Memory|Startup", meta=(ClampMin="16",ClampMax="64",ConfigRestartRequired=true)) int32 TexturePoolChunkMB = 16;
     /** 复制默认配置；返回的结构可以在蓝图中自由修改。 */
     FDesktopPetConfig MakeRuntimeConfig() const;
 };

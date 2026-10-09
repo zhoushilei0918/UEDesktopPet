@@ -3,6 +3,11 @@
 // 统一参数校验，蓝图 Setter、整组配置和 ini 都使用同一规则。
 void FDesktopPetConfig::Normalize()
 {
+    // 图集采用二次幂，避免引擎隐式向上取整造成配置值与实际占用不一致。
+    ShadowPageCapacity=FMath::RoundUpToPowerOfTwo(FMath::Clamp(ShadowPageCapacity,512,16384));
+    SurfaceCacheCapacity=FMath::RoundUpToPowerOfTwo(FMath::Clamp(SurfaceCacheCapacity,1024,8192));
+    RadianceProbeCapacity=FMath::RoundUpToPowerOfTwo(FMath::Clamp(RadianceProbeCapacity,64,256));
+    IdleRenderTargetPoolMB=FMath::Clamp(IdleRenderTargetPoolMB,0,1000);
     WindowSize.X=FMath::Clamp(WindowSize.X,64,2048);
     WindowSize.Y=FMath::Clamp(WindowSize.Y,64,2048);
     DisplayScale=FMath::Clamp(FMath::IsFinite(DisplayScale)?DisplayScale:1.f,.25f,3.f);
@@ -15,6 +20,7 @@ void FDesktopPetConfig::Normalize()
     MenuAnimationSeconds=FMath::Clamp(MenuAnimationSeconds,.01f,5.f);
     Sharpness=FMath::Clamp(FMath::IsFinite(Sharpness)?Sharpness:0.2f,0.f,1.f);
     WheelZoomStep=FMath::Clamp(FMath::IsFinite(WheelZoomStep)?WheelZoomStep:0.1f,0.01f,0.5f);
+    ZoomAnimationSeconds=FMath::Clamp(FMath::IsFinite(ZoomAnimationSeconds)?ZoomAnimationSeconds:0.18f,0.f,1.f);
     AdditiveAlphaStrength=FMath::Clamp(AdditiveAlphaStrength,.01f,4.f);
 }
 
@@ -56,7 +62,13 @@ FDesktopPetConfig UDesktopPetSettings::MakeRuntimeConfig() const
     Result.bCenterAnchoredScaling = bCenterAnchoredScaling;
     Result.bEnableWheelZoom = bEnableWheelZoom;
     Result.WheelZoomStep = WheelZoomStep;
+    Result.ZoomAnimationSeconds = ZoomAnimationSeconds;
     Result.Sharpness = Sharpness;
+    Result.bCompactMemory = bCompactMemory;
+    Result.ShadowPageCapacity = ShadowPageCapacity;
+    Result.SurfaceCacheCapacity = SurfaceCacheCapacity;
+    Result.RadianceProbeCapacity = RadianceProbeCapacity;
+    Result.IdleRenderTargetPoolMB = IdleRenderTargetPoolMB;
     Result.Normalize();
     return Result;
 }

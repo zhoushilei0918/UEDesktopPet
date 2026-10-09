@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
 #include "DesktopPetTypes.generated.h"
@@ -11,12 +11,14 @@ struct DESKTOPPET_API FDesktopPetConfig
     GENERATED_BODY()
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window") bool bTransparentWindowEnabled=true;
-    /** 尺寸变化时保持窗口中心；显式同时修改位置时以传入位置为准。 */
+    /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window") bool bCenterAnchoredScaling=true;
     /** 在人物上滚动鼠标滚轮时自动缩放，无需增强输入。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Input") bool bEnableWheelZoom=true;
     /** 每格滚轮的相对缩放量，例如 0.1 表示约 10%。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Input", meta=(ClampMin="0.01",ClampMax="0.5")) float WheelZoomStep=0.1f;
+    /** 鼠标锚点缩放的过渡秒数；使用真实时间，不受游戏时间倍率影响，0 表示立即完成。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Input", meta=(ClampMin="0",ClampMax="1")) float ZoomAnimationSeconds=0.18f;
     /** 仅在不透明内部做受限锐化，保留边缘 Alpha，0 表示关闭。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Quality", meta=(ClampMin="0",ClampMax="1")) float Sharpness=0.2f;
     /** 窗口的逻辑画布尺寸；最终物理尺寸还要乘以 DisplayScale。 */
@@ -73,6 +75,16 @@ struct DESKTOPPET_API FDesktopPetConfig
     /** Additive 覆盖率重建强度；Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Effects", meta=(ClampMin="0.01",ClampMax="4"))
     float AdditiveAlphaStrength = 1.f;
+    /** 小型桌宠缓存预算：只在隐藏主窗口的独立游戏中生效；PIE 和普通调试窗口保持项目原值。大型场景可关闭或增加容量。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Memory") bool bCompactMemory = true;
+    /** VSM 阴影页池容量上限，不修改每页精度；页数不足时引擎会降级，增加灯光/模型后应重新评估。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Memory", meta=(ClampMin="512",ClampMax="16384")) int32 ShadowPageCapacity = 512;
+    /** Lumen 表面缓存图集的边长上限，不修改单张 Card 的采样密度；复杂场景需要更大的图集。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Memory", meta=(ClampMin="1024",ClampMax="8192")) int32 SurfaceCacheCapacity = 1024;
+    /** Lumen 辐射缓存图集每轴的探针数上限，不修改单探针分辨率；有效容量为此值的平方。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Memory", meta=(ClampMin="64",ClampMax="256")) int32 RadianceProbeCapacity = 64;
+    /** 可复用渲染目标池保留的最低容量（MiB），不是硬上限；正在使用的纹理永远不会因此被释放。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Memory", meta=(ClampMin="0",ClampMax="1000")) int32 IdleRenderTargetPoolMB = 64;
     /** 将外部配置约束到合法范围，避免超大纹理或除零。 */
     void Normalize();
     /** 逻辑尺寸乘显示缩放后的实际物理像素尺寸。 */
