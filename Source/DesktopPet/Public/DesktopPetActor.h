@@ -18,6 +18,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetActorEvent,AActor*,Actor)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetPointer,const FDesktopPetPointerEvent&,Event);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDesktopPetInteraction,float,Progress,FVector2D,CanvasSize);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetDrag,bool,bDragging);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetTray,bool,bHiddenToTray);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDesktopPetConfigChanged,const FDesktopPetConfig&,Config);
 
 /** 通用透明显示宿主：只接收场景白名单和可选 Widget，不创建任何角色、灯光或菜单。 */
@@ -97,6 +98,34 @@ public:
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Lifecycle") void PetRequestClose();
     /** 查询是否已启动。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Lifecycle") bool PetIsDesktopWindowRunning() const;
+    /** 隐藏到系统托盘；只有托盘入口创建成功才返回 true，已经收起时重复调用也返回 true。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Tray") bool PetHideToTray();
+    /** 显示原桌宠窗口并移除托盘图标；也由托盘双击自动调用。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Tray") bool PetRestoreFromTray();
+    /** 查询本实例是否收在托盘中；停止/销毁实例会删除其托盘入口。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Tray") bool PetIsHiddenToTray() const;
+    /** 托盘状态变化：true 为收起，false 为恢复。项目可以据此暂停自己的音频等业务。 */
+    UPROPERTY(BlueprintAssignable,Category="DesktopPetEvent") FDesktopPetTray PetTrayStateChanged;
+    /** PetActor 蓝图可直接添加此事件，不需要手动绑定委托。 */
+    UFUNCTION(BlueprintImplementableEvent,Category="DesktopPetEvent") void PetEventTrayStateChanged(bool bHiddenToTray);
+    /** 独立控制任务栏按钮；不更改录屏许可，也不隐藏进程。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetShowInTaskbar(bool bShow);
+    /** 查询任务栏按钮的配置请求值；收进托盘时按钮始终隐藏。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Window") bool PetGetShowInTaskbar() const {return PetGetWindowMode()!=EDesktopPetWindowMode::ToolWindow;}
+    /** 修改 Windows 窗口捕获许可；排除效果取决于操作系统及软件所用捕获接口。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetAllowScreenCapture(bool bAllow);
+    /** 查询捕获许可配置。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Window") bool PetGetAllowScreenCapture() const {return PetGetRuntimeConfig().bAllowScreenCapture;}
+    /** 启停独立桌宠的主循环限帧；关闭后恢复项目自己的上限。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Performance") void PetSetLimitEngineFrameRate(bool bEnabled);
+    /** 查询自动限帧开关。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Performance") bool PetGetLimitEngineFrameRate() const {return PetGetRuntimeConfig().bLimitEngineFrameRate;}
+    /** 设置全部实例收起时的后台 Tick 上限，允许 1–30 Hz。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Performance") void PetSetTrayFrameRate(int32 FPS);
+    /** 查询后台帧率配置。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Performance") int32 PetGetTrayFrameRate() const {return PetGetRuntimeConfig().TrayFrameRate;}
+    /** 引擎当前有效 t.MaxFPS；0 为不限帧，不代表实际测得 FPS。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Performance") float PetGetEffectiveEngineFrameRateLimit() const;
     /** 重新收集 Actor/组件/标签白名单，支持运行时生成的 Niagara。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Capture") void PetRefreshVisibleActors();
     /** 添加一个运行时对象并立即刷新捕获白名单。 */
@@ -183,7 +212,7 @@ public:
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetWindowPosition(FIntPoint Position);
     /** 获取实际窗口位置，包括拖拽之后的位置。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Window") FIntPoint PetGetWindowPosition() const;
-    /** 运行时切换标准应用/悬浮工具窗口；使用项目设置会读取当前项目默认值，保留画面与窗口实例。 */
+    /** 兼容旧蓝图的任务栏策略接口；新蓝图推荐 PetSetShowInTaskbar，窗口始终保持可发现身份。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetWindowMode(EDesktopPetWindowMode Mode);
     /** 切换置顶状态。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetAlwaysOnTop(bool Value);

@@ -1,4 +1,4 @@
-﻿using UnrealBuildTool;
+using UnrealBuildTool;
 // 通用运行时不依赖任何项目角色、菜单或 Niagara 测试资产。
 public class DesktopPet : ModuleRules
 {
@@ -7,6 +7,6 @@ public class DesktopPet : ModuleRules
         PCHUsage=PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[]{"Core","CoreUObject","Engine","DeveloperSettings","UMG","InputCore"});
         PrivateDependencyModuleNames.AddRange(new[]{"DesktopPetBootstrap","Slate","SlateCore","ApplicationCore","RenderCore","RHI","ImageWrapper","Json","Renderer","Projects"});
-        PublicSystemLibraries.AddRange(new[]{"user32.lib","gdi32.lib"});
+        PublicSystemLibraries.AddRange(new[]{"user32.lib","gdi32.lib","shell32.lib","ole32.lib","uuid.lib"});
     }
 }

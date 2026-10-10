@@ -65,6 +65,7 @@ bool ADesktopPetActor::PetStartDesktopWindow()
     Runtime=MakeShared<FDesktopPetRuntime>();Runtime->Owner=this;
     if(!Runtime->Create(DesiredConfig)){Runtime.Reset();return false;}
     FDesktopPetMemory::Update(this,DesiredConfig);
+    FDesktopPetFramePacing::Update(this,DesiredConfig,Runtime->Shell.IsInTray());
     SceneTarget=NewObject<UTextureRenderTarget2D>(this);
     SceneTarget->ClearColor=FLinearColor(0,0,0,1);
     SceneTarget->InitCustomFormat(Runtime->Width*Runtime->Scale,Runtime->Height*Runtime->Scale,PF_FloatRGBA,true);
@@ -106,6 +107,7 @@ void ADesktopPetActor::PetStopDesktopWindow()
     if(OpacityCapture){OpacityCapture->TextureTarget=nullptr;OpacityCapture->DestroyComponent();OpacityCapture=nullptr;}
     SceneTarget=nullptr;FinalColorTarget=nullptr;GeometryTarget=nullptr;UITarget=nullptr;
     FDesktopPetMemory::Release(this);
+    FDesktopPetFramePacing::Release(this);
     bStopping=false;
 }
 // 仅显式重启才替换 HWND；尺寸和 SSAA 的运行时更改不走这里。
@@ -200,18 +202,24 @@ void ADesktopPetActor::Tick(float Delta)
         if(Exit)FPlatformMisc::RequestExit(false);
         PetStopDesktopWindow();return;
     }
+    if(FrameRuntime->RestoreRequested){FrameRuntime->RestoreRequested=false;PetRestoreFromTray();}
+    if(Runtime!=FrameRuntime)return;
     if(bConfigPending)
     {
         bConfigPending=false;
         FDesktopPetMemory::Update(this,DesiredConfig);
+    FDesktopPetFramePacing::Update(this,DesiredConfig,Runtime->Shell.IsInTray());
         Runtime->ApplyConfig(DesiredConfig);
         PetRuntimeConfigApplied.Broadcast(DesiredConfig);
     }
     if(Runtime!=FrameRuntime)return;
     UpdateOrbitCamera();UpdateDebugCamera();
     if(bWidgetPending){bWidgetPending=false;Runtime->SetWidget();}
-    FrameRuntime->UpdateZoom();
-    FrameRuntime->PollInput(Delta);
+    if(!FrameRuntime->Shell.IsInTray())
+    {
+        FrameRuntime->UpdateZoom();
+        FrameRuntime->PollInput(Delta);
+    }
     if(Runtime!=FrameRuntime)return;
     FrameRuntime->CaptureFrame(Delta);
     if(Runtime->Diagnostics&&FPlatformTime::Seconds()-Runtime->LastReport>2)
@@ -317,3 +325,47 @@ bool ADesktopPetActor::PetIsZooming() const{return Runtime&&Runtime->Zooming;}
 float ADesktopPetActor::PetGetZoomTargetScale() const{return Runtime&&Runtime->Zooming?Runtime->ZoomTargetScale:PetGetDisplayScale();}
 void ADesktopPetActor::PetSetZoomAnimationSeconds(float Value)
 {auto C=PetGetRuntimeConfig();C.ZoomAnimationSeconds=Value;PetApplyRuntimeConfig(C);}
+
+// 新接口仍共用整组配置路径，不在 UMG 回调内重建渲染资源。
+void ADesktopPetActor::PetSetShowInTaskbar(bool bShow)
+{PetSetWindowMode(bShow?EDesktopPetWindowMode::Application:EDesktopPetWindowMode::ToolWindow);}
+void ADesktopPetActor::PetSetAllowScreenCapture(bool bAllow)
+{auto C=PetGetRuntimeConfig();C.bAllowScreenCapture=bAllow;PetApplyRuntimeConfig(C);}
+void ADesktopPetActor::PetSetLimitEngineFrameRate(bool bEnabled)
+{auto C=PetGetRuntimeConfig();C.bLimitEngineFrameRate=bEnabled;PetApplyRuntimeConfig(C);}
+void ADesktopPetActor::PetSetTrayFrameRate(int32 FPS)
+{auto C=PetGetRuntimeConfig();C.TrayFrameRate=FPS;PetApplyRuntimeConfig(C);}
+float ADesktopPetActor::PetGetEffectiveEngineFrameRateLimit() const
+{return FDesktopPetFramePacing::GetEffectiveLimit();}
+bool ADesktopPetActor::PetIsHiddenToTray() const{return Runtime&&Runtime->Shell.IsInTray();}
+
+// 托盘隐藏不销毁 Actor、角色、UI 或相机；先获得可用恢复入口，再释放输入。
+bool ADesktopPetActor::PetHideToTray()
+{
+    const auto Current=Runtime;
+    if(!Current||bStopping||!Current->Config.bTransparentWindowEnabled)return false;
+    if(Current->Shell.IsInTray())return true;
+    if(!Current->Shell.HideToTray())return false;
+    Current->FinishZoom();Current->ReleaseHeldInput();
+    if(Runtime!=Current||!Current->Shell.IsInTray())return false;
+    PetCloseConfigWidget();
+    if(Runtime!=Current||!Current->Shell.IsInTray())return false;
+    UpdateHoveredActor(nullptr);
+    if(Runtime!=Current||!Current->Shell.IsInTray())return false;
+    FDesktopPetFramePacing::Update(this,Current->Config,true);
+    PetTrayStateChanged.Broadcast(true);
+    if(Runtime==Current&&Current->Shell.IsInTray())PetEventTrayStateChanged(true);
+    return Runtime==Current&&Current->Shell.IsInTray();
+}
+// 首次恢复立刻安排新捕获，上一张有效图像保留到新帧完成，不闪回 UE 游戏窗口。
+bool ADesktopPetActor::PetRestoreFromTray()
+{
+    const auto Current=Runtime;
+    if(!Current||bStopping)return false;
+    if(!Current->Shell.RestoreFromTray(Current->Config.bTransparentWindowEnabled))return false;
+    Current->NextCaptureTime=0.;
+    FDesktopPetFramePacing::Update(this,Current->Config,false);
+    PetTrayStateChanged.Broadcast(false);
+    if(Runtime==Current&&!Current->Shell.IsInTray())PetEventTrayStateChanged(false);
+    return Runtime==Current&&!Current->Shell.IsInTray();
+}

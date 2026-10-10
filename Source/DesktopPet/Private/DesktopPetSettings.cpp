@@ -18,6 +18,7 @@ void FDesktopPetConfig::Normalize()
     DisplayScale=FMath::Min(DisplayScale,2048.f/FMath::Max(WindowSize.X,WindowSize.Y));
     SupersampleScale=FMath::Clamp(SupersampleScale,1,4);
     TargetFrameRate=FMath::Clamp(TargetFrameRate,5,60);
+    TrayFrameRate=FMath::Clamp(TrayFrameRate,1,30);
     Exposure=FMath::Clamp(FMath::IsFinite(Exposure)?Exposure:1.f,.01f,16.f);
     HitAlphaThreshold=FMath::Clamp(HitAlphaThreshold,1,255);
     MenuCloseDelay=FMath::Clamp(MenuCloseDelay,0.f,10.f);
@@ -45,6 +46,9 @@ FDesktopPetConfig UDesktopPetSettings::MakeRuntimeConfig() const
 {
     FDesktopPetConfig Result;
     Result.WindowMode = WindowMode;
+    Result.bAllowScreenCapture = bAllowScreenCapture;
+    Result.bLimitEngineFrameRate = bLimitEngineFrameRate;
+    Result.TrayFrameRate = TrayFrameRate;
     Result.WindowSize = WindowSize;
     Result.WindowPosition = WindowPosition;
     Result.DisplayScale = DisplayScale;

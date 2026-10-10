@@ -12,7 +12,7 @@ void ADesktopPetActor::PetSetConfigWidgetClass(TSubclassOf<UUserWidget> Class)
 }
 bool ADesktopPetActor::PetOpenConfigWidget()
 {
-    if(!Runtime||bStopping||!ConfigWidgetClass)return false;
+    if(!Runtime||bStopping||Runtime->Shell.IsInTray()||!ConfigWidgetClass)return false;
     if(bConfigWidgetOpen)return true;
     if(!ConfigWidget)ConfigWidget=CreateWidget<UUserWidget>(GetWorld(),ConfigWidgetClass);
     if(!ConfigWidget)return false;

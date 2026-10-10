@@ -2,6 +2,8 @@
 #include "HAL/IConsoleManager.h"
 #include "DesktopPetActor.h"
 #include "DesktopPetMemory.h"
+#include "DesktopPetFramePacing.h"
+#include "DesktopPetShell.h"
 #include "DesktopPetRenderPolicy.h"
 #include "DesktopPetSettings.h"
 #include "DesktopPetViewExtension.h"
@@ -100,6 +102,8 @@ struct FDesktopPetRuntime
 {
     ADesktopPetActor* Owner=nullptr;
     HWND Window=nullptr;
+    FDesktopPetShell Shell;
+    bool RestoreRequested=false;
     FDesktopPetConfig Config;
     HDC MemoryDC=nullptr;
     HBITMAP Bitmap=nullptr;
@@ -112,7 +116,7 @@ struct FDesktopPetRuntime
     bool WasInputTransparent=false;
     POINT DragOffset{};
     FVector2D Cursor=FVector2D::ZeroVector,LastCursor=FVector2D::ZeroVector;
-    double LastCapture=0,LastHover=0,LastReport=0,StartTime=0;
+    double LastCapture=0,NextCaptureTime=0,LastHover=0,LastReport=0,StartTime=0;
     float OpenAmount=0;
     uint64 Frames=0,PetClicks=0,UIClicks=0;
     // 诊断记录合并后的覆盖率与读回开销，仅在显式开启诊断时统计。
@@ -163,23 +167,9 @@ struct FDesktopPetRuntime
         Draggable=Config.bDraggable;ExitOnClose=Config.bExitApplicationOnClose;
         Diagnostics=Config.bWriteDiagnostics;
     }
-    // 两种模式只选择系统窗口身份位，不改 Layered、Topmost 和动态鼠标穿透标记。
-    static LONG_PTR GetWindowModeStyle(EDesktopPetWindowMode Mode)
-    {
-        return Mode==EDesktopPetWindowMode::ToolWindow?WS_EX_TOOLWINDOW:WS_EX_APPWINDOW;
-    }
-    // Windows 要求先隐藏再变更任务栏身份；保留 HWND、位置、DIB 和渲染目标，并无激活地恢复显示。
+    // 任务栏与捕获许可独立；旧枚举 ToolWindow 只表示隐藏任务栏按钮。
     void ApplyWindowMode()
-    {
-        const LONG_PTR Before=GetWindowLongPtrW(Window,GWL_EXSTYLE);
-        const LONG_PTR After=(Before&~(WS_EX_TOOLWINDOW|WS_EX_APPWINDOW))|GetWindowModeStyle(Config.WindowMode);
-        if(Before==After)return;
-        const bool WasVisible=IsWindowVisible(Window)!=0;
-        if(WasVisible)ShowWindow(Window,SW_HIDE);
-        SetWindowLongPtrW(Window,GWL_EXSTYLE,After);
-        SetWindowPos(Window,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
-        if(WasVisible)ShowWindow(Window,SW_SHOWNOACTIVATE);
-    }
+    {Shell.ApplyFlags(Config.WindowMode!=EDesktopPetWindowMode::ToolWindow,Config.bAllowScreenCapture);}
     // 接收项目 Widget，空指针对应完全透明的空 UI 层。
     void SetWidget()
     {
@@ -197,12 +187,13 @@ struct FDesktopPetRuntime
         const bool Resize=NewConfig.GetDisplaySize()!=Config.GetDisplaySize()||NewConfig.SupersampleScale!=Config.SupersampleScale;
         RECT ActualRect{};GetWindowRect(Window,&ActualRect);
         const bool Move=NewConfig.WindowPosition!=FIntPoint(ActualRect.left,ActualRect.top);
-        const bool WindowModeChanged=NewConfig.WindowMode!=Config.WindowMode;
+        const bool WindowModeChanged=NewConfig.WindowMode!=Config.WindowMode||NewConfig.bAllowScreenCapture!=Config.bAllowScreenCapture;
         const bool ModeChanged=NewConfig.bTransparentWindowEnabled!=Config.bTransparentWindowEnabled;
         const bool PreserveGesture=Zooming&&ZoomCommitPending;
         if(!ZoomCommitPending)ZoomAnchorValid=false;
         ZoomCommitPending=false;
         if(!PreserveGesture)Zooming=false;
+        if(NewConfig.TargetFrameRate!=Config.TargetFrameRate||Resize)NextCaptureTime=0.;
         Config=NewConfig;
         ReadConfig();
         if(WindowModeChanged){ReleaseHeldInput();ApplyWindowMode();}
@@ -213,7 +204,14 @@ struct FDesktopPetRuntime
             Present(Config.GetDisplaySize(),Config.WindowPosition);
         }
         if(!Draggable)FinishDrag();
-        if(ModeChanged){ReleaseHeldInput();Owner->PetCloseConfigWidget();ShowWindow(Window,Config.bTransparentWindowEnabled?SW_SHOWNOACTIVATE:SW_HIDE);}
+        if(ModeChanged)
+        {
+            ReleaseHeldInput();Owner->PetCloseConfigWidget();
+            // 调试窗口模式不能留在托盘里，否则普通游戏窗口和收起状态会相互矛盾。
+            if(Shell.IsInTray())RestoreRequested=true;
+            ShowWindow(Window,Config.bTransparentWindowEnabled&&!Shell.IsInTray()?SW_SHOWNOACTIVATE:SW_HIDE);
+            ApplyWindowMode();
+        }
         if(Resize)
         {
             FlushRenderingCommands();Pending.Reset();ReusableReadback.Reset();Owner->ViewExtension.Reset();
@@ -238,7 +236,7 @@ struct FDesktopPetRuntime
     // 手动拖拽 API 不要求鼠标位于人物上，可用于项目自定义拖拽把手或增强输入。
     bool BeginDrag()
     {
-        if(Owner->bConfigWidgetOpen||!Config.bTransparentWindowEnabled)return false;
+        if(Shell.IsInTray()||Owner->bConfigWidgetOpen||!Config.bTransparentWindowEnabled)return false;
         if(!Draggable||Dragging||OrbitDragging)return Dragging;
         FinishZoom();
         Dragging=true;DragOffset={static_cast<LONG>(Cursor.X),static_cast<LONG>(Cursor.Y)};
@@ -267,6 +265,11 @@ struct FDesktopPetRuntime
         // 原生消息内触发蓝图 Stop 时，运行时至少保留到本条消息返回。
         const TSharedPtr<FDesktopPetRuntime> MessageRuntime=R->Owner?R->Owner->Runtime:nullptr;
         if(!R->IsActive())return DefWindowProc(H,M,W,L);
+        const auto ShellAction=R->Shell.HandleMessage(M,W,L);
+        if(ShellAction==FDesktopPetShell::EAction::Restore){R->RestoreRequested=true;return 0;}
+        if(ShellAction==FDesktopPetShell::EAction::Close){R->CloseRequested=true;return 0;}
+        // 收起期间只保留系统/托盘消息，既不拾取人物也不响应残留鼠标按键。
+        if(R->Shell.IsInTray()&&M>=WM_MOUSEFIRST&&M<=WM_MOUSELAST)return 0;
         // 移动统一由 PollInput 采样；提前覆盖移动坐标会丢失增强输入的位移增量。
         if((M==WM_LBUTTONDOWN||M==WM_LBUTTONDBLCLK||M==WM_LBUTTONUP||M==WM_RBUTTONDOWN||M==WM_RBUTTONUP||M==WM_MOUSEWHEEL))
         {
@@ -348,7 +351,7 @@ struct FDesktopPetRuntime
     // 可见像素与组件包围盒联合拾取；可见名单自动获得交互权，不依赖查询碰撞。
     AActor* PickActor(FVector2D Position) const
     {
-        if(Owner->bConfigWidgetOpen||!Config.bTransparentWindowEnabled)return nullptr;
+        if(Shell.IsInTray()||Owner->bConfigWidgetOpen||!Config.bTransparentWindowEnabled)return nullptr;
         if(!FMath::IsFinite(Position.X)||!FMath::IsFinite(Position.Y))return nullptr;
         const int32 X=FMath::FloorToInt(Position.X),Y=FMath::FloorToInt(Position.Y);
         if(X<0||Y<0||X>=DisplaySize.X||Y>=DisplaySize.Y||!SceneAlpha.IsValidIndex(Y*DisplaySize.X+X)||SceneAlpha[Y*DisplaySize.X+X]<Threshold)return nullptr;
@@ -358,7 +361,7 @@ struct FDesktopPetRuntime
     // 两种鼠标键统一判定；Actor 点击定义为按下，左键才参与默认窗口拖拽。
     void PointerDown(FKey Key=EKeys::LeftMouseButton)
     {
-        if(!Owner||!VirtualUser.IsValid())return;
+        if(!Owner||!VirtualUser.IsValid()||Shell.IsInTray())return;
         Owner->UpdateHoveredActor(PickActor(Cursor));
         if(!IsActive())return;
         EmitPointer(EDesktopPetPointerEvent::Press,Key);
@@ -371,7 +374,7 @@ struct FDesktopPetRuntime
             UIPressed=true;Pressed.Add(Key);
             FSlateApplication::Get().RoutePointerDownEvent(Path,Pointer(Key));
             if(!IsActive())return;
-            if(GetCapture()!=Window)SetCapture(Window);
+            if(!Shell.IsInTray()&&GetCapture()!=Window)SetCapture(Window);
         }
         else if(AActor* Actor=PickActor(Cursor))
         {
@@ -387,7 +390,7 @@ struct FDesktopPetRuntime
             else if(Key==EKeys::RightMouseButton)
             {
                 Owner->PetActorRightClicked.Broadcast(Actor);Owner->PetEventActorRightClicked(Actor);
-                if(IsActive()&&!Owner->bConfigWidgetOpen&&!Dragging&&IsValid(Owner->OrbitFocusActor))OrbitDragging=true;
+                if(IsActive()&&!Shell.IsInTray()&&!Owner->bConfigWidgetOpen&&!Dragging&&IsValid(Owner->OrbitFocusActor))OrbitDragging=true;
             }
         }
     }
@@ -430,8 +433,9 @@ struct FDesktopPetRuntime
         WC.lpszClassName=L"UE58DesktopPetWindow";WC.hCursor=LoadCursor(nullptr,IDC_ARROW);
         RegisterClassExW(&WC);
         const FString Title=FString::Printf(TEXT("DesktopPet - %s"),*Backend);
-        Window=CreateWindowExW(WS_EX_LAYERED|GetWindowModeStyle(Config.WindowMode)|(Topmost?WS_EX_TOPMOST:0),WC.lpszClassName,*Title,WS_POPUP,Config.WindowPosition.X,Config.WindowPosition.Y,Width,Height,nullptr,nullptr,WC.hInstance,this);
+        Window=CreateWindowExW(WS_EX_LAYERED|WS_EX_APPWINDOW|(Topmost?WS_EX_TOPMOST:0),WC.lpszClassName,*Title,WS_POPUP,Config.WindowPosition.X,Config.WindowPosition.Y,Width,Height,nullptr,nullptr,WC.hInstance,this);
         if(!Window){UE_LOG(LogDesktopPet,Error,TEXT("CreateWindow failed: %u"),GetLastError());return false;}
+        Shell.Attach(Window);
         MemoryDC=CreateCompatibleDC(nullptr);
         BITMAPINFO Info{};Info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);Info.bmiHeader.biWidth=Width;Info.bmiHeader.biHeight=-Height;
         Info.bmiHeader.biPlanes=1;Info.bmiHeader.biBitCount=32;Info.bmiHeader.biCompression=BI_RGB;
@@ -446,7 +450,9 @@ struct FDesktopPetRuntime
         SetWidget();
         FSlateApplication::Get().RegisterVirtualWindow(VirtualWindow.ToSharedRef());
         Renderer=MakeUnique<FWidgetRenderer>(true,true);
+        ApplyWindowMode();
         ShowWindow(Window,Config.bTransparentWindowEnabled?SW_SHOWNOACTIVATE:SW_HIDE);
+        ApplyWindowMode();
         FDesktopPetWindowGuard::SetHidden(Config.bHideGameWindow&&Config.bTransparentWindowEnabled);
         ApplyPetGameViewportPolicy(Config.bHideGameWindow&&Config.bTransparentWindowEnabled);
         if(auto* C=IConsoleManager::Get().FindConsoleVariable(TEXT("t.IdleWhenNotForeground")))C->Set(0,ECVF_SetByCode);
@@ -461,6 +467,7 @@ struct FDesktopPetRuntime
         Pending.Reset();ReusableReadback.Reset();
         if(FSlateApplication::IsInitialized()&&VirtualWindow.IsValid())FSlateApplication::Get().UnregisterVirtualWindow(VirtualWindow.ToSharedRef());
         VirtualWindow.Reset();VirtualUser.Reset();Renderer.Reset();
+        Shell.Detach();
         if(Window){SetWindowLongPtr(Window,GWLP_USERDATA,0);DestroyWindow(Window);}
         if(OldBitmap&&MemoryDC)SelectObject(MemoryDC,OldBitmap);
         if(Bitmap)DeleteObject(Bitmap);
@@ -612,7 +619,7 @@ struct FDesktopPetRuntime
                 Pending.Reset();
             }
             else if(Pending->Complete.Load())
-            {Composite(*Pending);ReusableReadback=Pending;Pending.Reset();}
+            {if(!Shell.IsInTray())Composite(*Pending);ReusableReadback=Pending;Pending.Reset();}
             else if(Pending->Submitted.Load()&&!Pending->Copying.Load()&&(!Pending->HasUI||Pending->UI.IsReady())&&Pending->FinalColor.IsReady()&&Pending->Geometry.IsReady())
             {
                 Pending->Copying.Store(true);auto Frame=Pending;
@@ -645,14 +652,19 @@ struct FDesktopPetRuntime
             }
         }
         const double Now=FPlatformTime::Seconds();
-        if(Pending.IsValid()||Now-LastCapture<1.0/FrameRate)return;
+        if(Shell.IsInTray()||Pending.IsValid()||Now<NextCaptureTime)return;
+        const double Interval=1.0/FrameRate;
+        const float CaptureDelta=LastCapture>0.?float(Now-LastCapture):float(Interval);
+        // 按绝对时间推进目标节拍，不把 Tick 量化的延迟累加到每一帧；慢帧跳过过期节拍，不突发补帧。
+        if(NextCaptureTime<=0.)NextCaptureTime=Now;
+        NextCaptureTime+=(FMath::FloorToDouble((Now-NextCaptureTime)/Interval)+1.)*Interval;
         LastCapture=Now;
         FDesktopPetMemory::Update(Owner,Config);
         Owner->SyncOpacityCapture();
         Owner->OpacityCapture->CaptureScene();
         Owner->Capture->CaptureScene();
         if(HasUI)UIHitSize=FIntPoint(Width,Height);
-        if(HasUI)Renderer->DrawWindow(Owner->UITarget,VirtualWindow->GetHittestGrid(),VirtualWindow.ToSharedRef(),Config.DisplayScale,FVector2D(Width,Height),Delta,false);
+        if(HasUI)Renderer->DrawWindow(Owner->UITarget,VirtualWindow->GetHittestGrid(),VirtualWindow.ToSharedRef(),Config.DisplayScale,FVector2D(Width,Height),CaptureDelta,false);
         // 复用 staging 纹理及 CPU 数组，避免每帧分配数十 MB 的读回对象。
         auto Frame=ReusableReadback;ReusableReadback.Reset();
         if(!Frame){Frame=MakeShared<FPetReadback,ESPMode::ThreadSafe>();++ReadbackAllocations;}
@@ -699,6 +711,12 @@ struct FDesktopPetRuntime
         }
         RECT Rect{};GetWindowRect(Window,&Rect);
         auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("backend"),Backend);J->SetNumberField(TEXT("frames"),Frames);
+        J->SetBoolField(TEXT("hidden_to_tray"),Shell.IsInTray());
+        J->SetBoolField(TEXT("show_in_taskbar"),Config.WindowMode!=EDesktopPetWindowMode::ToolWindow);
+        J->SetBoolField(TEXT("taskbar_policy_applied"),Shell.IsTaskbarPolicyApplied());
+        J->SetBoolField(TEXT("allow_screen_capture"),Config.bAllowScreenCapture);
+        J->SetBoolField(TEXT("capture_policy_applied"),Shell.IsCapturePolicyApplied());
+        J->SetNumberField(TEXT("effective_engine_fps_limit"),FDesktopPetFramePacing::GetEffectiveLimit());
         J->SetNumberField(TEXT("average_fps"),Frames/FMath::Max(.001,FPlatformTime::Seconds()-StartTime));
         J->SetNumberField(TEXT("width"),ImageWidth);J->SetNumberField(TEXT("height"),ImageHeight);J->SetNumberField(TEXT("ssaa_scale"),Scale);
         J->SetNumberField(TEXT("scene_zero_alpha"),Empty);J->SetNumberField(TEXT("scene_opaque_pixels"),Solid);J->SetNumberField(TEXT("scene_fractional_alpha"),Edge);

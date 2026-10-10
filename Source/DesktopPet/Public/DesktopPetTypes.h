@@ -4,16 +4,16 @@
 #include "DesktopPetTypes.generated.h"
 class AActor;
 
-/** 面向使用者的窗口模式；透明、置顶和鼠标穿透由各自独立选项控制。 */
+/** 任务栏显示策略；保留旧枚举标识以兼容已经保存的蓝图和地图。 */
 UENUM(BlueprintType)
 enum class EDesktopPetWindowMode : uint8
 {
     /** 实例沿用项目设置；旧地图新增此字段后也能继承项目默认值。 */
     ProjectDefault UMETA(DisplayName="使用项目设置"),
-    /** 普通应用窗口：出现在任务栏、Alt+Tab 和常规录屏窗口列表中。 */
-    Application UMETA(DisplayName="标准应用窗口"),
-    /** 工具窗口：隐藏任务栏和 Alt+Tab 入口，部分录屏软件会过滤此类窗口。 */
-    ToolWindow UMETA(DisplayName="悬浮工具窗口")
+    /** 显示任务栏按钮；桌宠使用普通应用窗口身份。 */
+    Application UMETA(DisplayName="显示任务栏按钮"),
+    /** 不显示任务栏按钮；不再使用 WS_EX_TOOLWINDOW，仍可出现在常规窗口捕获列表。 */
+    ToolWindow UMETA(DisplayName="隐藏任务栏按钮")
 };
 
 /** 一个桌宠实例的完整配置；可在蓝图中 Make / Set Members 后交给 PetApplyRuntimeConfig。 */
@@ -21,9 +21,18 @@ USTRUCT(BlueprintType)
 struct DESKTOPPET_API FDesktopPetConfig
 {
     GENERATED_BODY()
-    /** 只控制桌宠的系统窗口身份；默认继承 Project Settings → Pet，不改变画面和输入穿透。 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window", meta=(DisplayName="窗口模式"))
+    /** 控制桌宠的任务栏按钮；默认继承 Project Settings → Pet。枚举标识保留以兼容旧地图，窗口保持普通可捕获身份。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window", meta=(DisplayName="任务栏显示"))
     EDesktopPetWindowMode WindowMode = EDesktopPetWindowMode::ProjectDefault;
+    /** 正常进程始终在任务管理器可见。此项仅控制 Windows 对窗口的捕获许可；部分旧捕获路径可能不遵循排除设置。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window", meta=(DisplayName="允许屏幕捕获"))
+    bool bAllowScreenCapture=true;
+    /** 独立透明桌宠自动限制引擎主循环；30 FPS 输出使用最高 120 Hz 调度。PIE/普通游戏视口不受影响，不降低图像质量。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Performance", meta=(DisplayName="自动限制引擎帧率"))
+    bool bLimitEngineFrameRate=true;
+    /** 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Performance", meta=(DisplayName="托盘后台帧率", ClampMin="1", ClampMax="30"))
+    int32 TrayFrameRate=5;
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window") bool bTransparentWindowEnabled=true;
     /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
@@ -60,7 +69,7 @@ struct DESKTOPPET_API FDesktopPetConfig
     /** 每个方向的超采样倍率；2 表示四个采样，保留平滑的边缘 Alpha。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Quality", meta=(ClampMin="1",ClampMax="4"))
     int32 SupersampleScale = 2;
-    /** 透明帧的输出频率上限；不直接修改全局游戏帧率。 */
+    /** 透明帧输出频率上限；启用自动限帧时会同时协调引擎调度频率，不降低捕获质量。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Quality", meta=(ClampMin="5",ClampMax="60"))
     int32 TargetFrameRate = 30;
     /** 捕获颜色的曝光倍数，修改后下一帧生效。 */

@@ -12,9 +12,18 @@ class DESKTOPPET_API UDesktopPetSettings : public UDeveloperSettings
 public:
     /** 在项目设置中使用独立 Pet 分类；ini 节名不变，兼容已有工程配置。 */
     UDesktopPetSettings() { CategoryName=TEXT("Pet"); }
-    /** 标准应用窗口提供任务栏、Alt+Tab 和录屏选择入口；悬浮工具窗口隐藏这些入口。进程始终正常可见。 */
-    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="窗口模式", InvalidEnumValues="ProjectDefault", DisplayPriority="0"))
+    /** 是否显示任务栏按钮；与屏幕捕获许可独立。进程始终在任务管理器中正常可见。 */
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="任务栏显示", InvalidEnumValues="ProjectDefault", DisplayPriority="0"))
     EDesktopPetWindowMode WindowMode = EDesktopPetWindowMode::Application;
+    /** 正常进程始终在任务管理器可见。此项仅控制 Windows 对窗口的捕获许可；部分旧捕获路径可能不遵循排除设置。 */
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="允许屏幕捕获"))
+    bool bAllowScreenCapture=true;
+    /** 独立透明桌宠自动限制引擎主循环；30 FPS 输出使用最高 120 Hz 调度。PIE/普通游戏视口不受影响，不降低图像质量。 */
+    UPROPERTY(Config, EditAnywhere, Category="性能", meta=(DisplayName="自动限制引擎帧率"))
+    bool bLimitEngineFrameRate=true;
+    /** 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 */
+    UPROPERTY(Config, EditAnywhere, Category="性能", meta=(DisplayName="托盘后台帧率", ClampMin="1", ClampMax="30"))
+    int32 TrayFrameRate=5;
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(Config, EditAnywhere, Category="Window") bool bTransparentWindowEnabled=true;
     /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
@@ -36,7 +45,7 @@ public:
     /** 整个显示面的缩放倍率，人物与 UI 同步缩放；不是修改角色世界缩放。 */
     UPROPERTY(Config, EditAnywhere, Category="Window", meta=(ClampMin="0.25",ClampMax="3"))
     float DisplayScale = 1.f;
-    /** 是否把桌宠原生窗口置顶；两个窗口模式都可以独立使用此选项。 */
+    /** 是否把桌宠原生窗口置顶；与任务栏显示和捕获许可独立。 */
     UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="始终置顶", DisplayPriority="1"))
     bool bAlwaysOnTop = true;
     /** 仅隐藏并禁用底层 UE 游戏窗口，不隐藏进程，也不影响独立桌宠或编辑器主窗口。 */
@@ -51,7 +60,7 @@ public:
     /** 每个方向的超采样倍率；2 表示四个采样，保留平滑的边缘 Alpha。 */
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="1",ClampMax="4"))
     int32 SupersampleScale = 2;
-    /** 透明帧的输出频率上限；不直接修改全局游戏帧率。 */
+    /** 透明帧输出频率上限；启用自动限帧时会同时协调引擎调度频率，不降低捕获质量。 */
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="5",ClampMax="60"))
     int32 TargetFrameRate = 30;
     /** 捕获颜色的曝光倍数，修改后下一帧生效。 */
