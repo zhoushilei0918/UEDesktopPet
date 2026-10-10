@@ -61,7 +61,7 @@ private:
         Section.AddMenuEntry(TEXT("DesktopPet.Settings"), LOCTEXT("Settings", "桌宠项目设置"), LOCTEXT("SettingsTip", "编辑 DesktopPet 默认参数。"), Icon,
             FUIAction(FExecuteAction::CreateLambda([] {
                 if (auto* Settings = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings")))
-                    Settings->ShowViewer(TEXT("Project"), TEXT("Plugins"), TEXT("DesktopPetSettings"));
+                    Settings->ShowViewer(TEXT("Project"), TEXT("Pet"), TEXT("DesktopPetSettings"));
             })));
     }
 };

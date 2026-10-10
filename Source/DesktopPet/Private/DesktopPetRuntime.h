@@ -163,6 +163,23 @@ struct FDesktopPetRuntime
         Draggable=Config.bDraggable;ExitOnClose=Config.bExitApplicationOnClose;
         Diagnostics=Config.bWriteDiagnostics;
     }
+    // 两种模式只选择系统窗口身份位，不改 Layered、Topmost 和动态鼠标穿透标记。
+    static LONG_PTR GetWindowModeStyle(EDesktopPetWindowMode Mode)
+    {
+        return Mode==EDesktopPetWindowMode::ToolWindow?WS_EX_TOOLWINDOW:WS_EX_APPWINDOW;
+    }
+    // Windows 要求先隐藏再变更任务栏身份；保留 HWND、位置、DIB 和渲染目标，并无激活地恢复显示。
+    void ApplyWindowMode()
+    {
+        const LONG_PTR Before=GetWindowLongPtrW(Window,GWL_EXSTYLE);
+        const LONG_PTR After=(Before&~(WS_EX_TOOLWINDOW|WS_EX_APPWINDOW))|GetWindowModeStyle(Config.WindowMode);
+        if(Before==After)return;
+        const bool WasVisible=IsWindowVisible(Window)!=0;
+        if(WasVisible)ShowWindow(Window,SW_HIDE);
+        SetWindowLongPtrW(Window,GWL_EXSTYLE,After);
+        SetWindowPos(Window,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+        if(WasVisible)ShowWindow(Window,SW_SHOWNOACTIVATE);
+    }
     // 接收项目 Widget，空指针对应完全透明的空 UI 层。
     void SetWidget()
     {
@@ -180,6 +197,7 @@ struct FDesktopPetRuntime
         const bool Resize=NewConfig.GetDisplaySize()!=Config.GetDisplaySize()||NewConfig.SupersampleScale!=Config.SupersampleScale;
         RECT ActualRect{};GetWindowRect(Window,&ActualRect);
         const bool Move=NewConfig.WindowPosition!=FIntPoint(ActualRect.left,ActualRect.top);
+        const bool WindowModeChanged=NewConfig.WindowMode!=Config.WindowMode;
         const bool ModeChanged=NewConfig.bTransparentWindowEnabled!=Config.bTransparentWindowEnabled;
         const bool PreserveGesture=Zooming&&ZoomCommitPending;
         if(!ZoomCommitPending)ZoomAnchorValid=false;
@@ -187,6 +205,7 @@ struct FDesktopPetRuntime
         if(!PreserveGesture)Zooming=false;
         Config=NewConfig;
         ReadConfig();
+        if(WindowModeChanged){ReleaseHeldInput();ApplyWindowMode();}
         if(!PreserveGesture)
         {
             PresentedScale=ZoomTargetScale=Config.DisplayScale;
@@ -411,7 +430,7 @@ struct FDesktopPetRuntime
         WC.lpszClassName=L"UE58DesktopPetWindow";WC.hCursor=LoadCursor(nullptr,IDC_ARROW);
         RegisterClassExW(&WC);
         const FString Title=FString::Printf(TEXT("DesktopPet - %s"),*Backend);
-        Window=CreateWindowExW(WS_EX_LAYERED|WS_EX_TOOLWINDOW|(Topmost?WS_EX_TOPMOST:0),WC.lpszClassName,*Title,WS_POPUP,Config.WindowPosition.X,Config.WindowPosition.Y,Width,Height,nullptr,nullptr,WC.hInstance,this);
+        Window=CreateWindowExW(WS_EX_LAYERED|GetWindowModeStyle(Config.WindowMode)|(Topmost?WS_EX_TOPMOST:0),WC.lpszClassName,*Title,WS_POPUP,Config.WindowPosition.X,Config.WindowPosition.Y,Width,Height,nullptr,nullptr,WC.hInstance,this);
         if(!Window){UE_LOG(LogDesktopPet,Error,TEXT("CreateWindow failed: %u"),GetLastError());return false;}
         MemoryDC=CreateCompatibleDC(nullptr);
         BITMAPINFO Info{};Info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);Info.bmiHeader.biWidth=Width;Info.bmiHeader.biHeight=-Height;
@@ -699,6 +718,8 @@ struct FDesktopPetRuntime
         J->SetNumberField(TEXT("zoom_target_scale"),Zooming?ZoomTargetScale:PresentedScale);
         J->SetBoolField(TEXT("zooming"),Zooming);
         J->SetNumberField(TEXT("presentations"),Presentations);
+        // 记录有效模式，方便区分桌宠的可发现性与底层 UE 窗口的隐藏状态。
+        J->SetStringField(TEXT("window_mode"),Config.WindowMode==EDesktopPetWindowMode::ToolWindow?TEXT("ToolWindow"):TEXT("Application"));
         J->SetNumberField(TEXT("render_width"),RenderWidth);J->SetNumberField(TEXT("render_height"),RenderHeight);
         J->SetBoolField(TEXT("capture_translucency"),Config.bCaptureTranslucency);
         J->SetBoolField(TEXT("engine_post_processing"),true);

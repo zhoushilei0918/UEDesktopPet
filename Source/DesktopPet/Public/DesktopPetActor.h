@@ -119,6 +119,8 @@ public:
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Configuration") FIntPoint PetGetWindowSize() const {return PetGetRuntimeConfig().WindowSize;}
     /** 获取当前实例的显示缩放。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Configuration") float PetGetDisplayScale() const {return PetGetRuntimeConfig().DisplayScale;}
+    /** 获取解析项目默认值后的有效窗口模式。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Window") EDesktopPetWindowMode PetGetWindowMode() const {auto C=PetGetRuntimeConfig();C.Normalize();return C.WindowMode;}
     /** 获取当前实例的置顶状态。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Configuration") bool PetGetAlwaysOnTop() const {return PetGetRuntimeConfig().bAlwaysOnTop;}
     /** 获取当前实例的主窗口隐藏策略。 */
@@ -181,6 +183,8 @@ public:
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetWindowPosition(FIntPoint Position);
     /** 获取实际窗口位置，包括拖拽之后的位置。 */
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Window") FIntPoint PetGetWindowPosition() const;
+    /** 运行时切换标准应用/悬浮工具窗口；使用项目设置会读取当前项目默认值，保留画面与窗口实例。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetWindowMode(EDesktopPetWindowMode Mode);
     /** 切换置顶状态。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Window") void PetSetAlwaysOnTop(bool Value);
     /** 切换 UE 游戏窗口隐藏与输入禁用；编辑器主窗口不受影响。 */

@@ -4,11 +4,26 @@
 #include "DesktopPetTypes.generated.h"
 class AActor;
 
+/** 面向使用者的窗口模式；透明、置顶和鼠标穿透由各自独立选项控制。 */
+UENUM(BlueprintType)
+enum class EDesktopPetWindowMode : uint8
+{
+    /** 实例沿用项目设置；旧地图新增此字段后也能继承项目默认值。 */
+    ProjectDefault UMETA(DisplayName="使用项目设置"),
+    /** 普通应用窗口：出现在任务栏、Alt+Tab 和常规录屏窗口列表中。 */
+    Application UMETA(DisplayName="标准应用窗口"),
+    /** 工具窗口：隐藏任务栏和 Alt+Tab 入口，部分录屏软件会过滤此类窗口。 */
+    ToolWindow UMETA(DisplayName="悬浮工具窗口")
+};
+
 /** 一个桌宠实例的完整配置；可在蓝图中 Make / Set Members 后交给 PetApplyRuntimeConfig。 */
 USTRUCT(BlueprintType)
 struct DESKTOPPET_API FDesktopPetConfig
 {
     GENERATED_BODY()
+    /** 只控制桌宠的系统窗口身份；默认继承 Project Settings → Pet，不改变画面和输入穿透。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window", meta=(DisplayName="窗口模式"))
+    EDesktopPetWindowMode WindowMode = EDesktopPetWindowMode::ProjectDefault;
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Window") bool bTransparentWindowEnabled=true;
     /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */

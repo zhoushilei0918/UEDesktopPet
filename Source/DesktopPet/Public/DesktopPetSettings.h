@@ -10,8 +10,11 @@ class DESKTOPPET_API UDesktopPetSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
 public:
-    /** 在项目设置的 Plugins 分类中注册。 */
-    UDesktopPetSettings() { CategoryName=TEXT("Plugins"); }
+    /** 在项目设置中使用独立 Pet 分类；ini 节名不变，兼容已有工程配置。 */
+    UDesktopPetSettings() { CategoryName=TEXT("Pet"); }
+    /** 标准应用窗口提供任务栏、Alt+Tab 和录屏选择入口；悬浮工具窗口隐藏这些入口。进程始终正常可见。 */
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="窗口模式", InvalidEnumValues="ProjectDefault", DisplayPriority="0"))
+    EDesktopPetWindowMode WindowMode = EDesktopPetWindowMode::Application;
     /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口，便于调试。 */
     UPROPERTY(Config, EditAnywhere, Category="Window") bool bTransparentWindowEnabled=true;
     /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
@@ -33,11 +36,11 @@ public:
     /** 整个显示面的缩放倍率，人物与 UI 同步缩放；不是修改角色世界缩放。 */
     UPROPERTY(Config, EditAnywhere, Category="Window", meta=(ClampMin="0.25",ClampMax="3"))
     float DisplayScale = 1.f;
-    /** 是否把桌宠原生窗口置顶。 */
-    UPROPERTY(Config, EditAnywhere, Category="Window")
+    /** 是否把桌宠原生窗口置顶；两个窗口模式都可以独立使用此选项。 */
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="始终置顶", DisplayPriority="1"))
     bool bAlwaysOnTop = true;
-    /** 隐藏、禁用 UE 游戏窗口并从任务栏/Alt+Tab 中排除；不影响编辑器主窗口。 */
-    UPROPERTY(Config, EditAnywhere, Category="Window")
+    /** 仅隐藏并禁用底层 UE 游戏窗口，不隐藏进程，也不影响独立桌宠或编辑器主窗口。 */
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="隐藏 UE 游戏窗口", DisplayPriority="2"))
     bool bHideGameWindow = true;
     /** 是否允许 PetBeginWindowDrag 启动拖拽。 */
     UPROPERTY(Config, EditAnywhere, Category="Input")
@@ -55,7 +58,7 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Quality", meta=(ClampMin="0.01",ClampMax="16"))
     float Exposure = 1.f;
     /** 启用按命中阈值和 UI 命中判定的额外穿透；零 Alpha 像素始终由 Windows 穿透。 */
-    UPROPERTY(Config, EditAnywhere, Category="Input")
+    UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="透明区域鼠标穿透", DisplayPriority="3"))
     bool bClickThroughTransparentPixels = true;
     /** 接收场景鼠标事件所需的 Alpha，范围 1–255；不会裁剪视觉透明度。 */
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="1",ClampMax="255"))

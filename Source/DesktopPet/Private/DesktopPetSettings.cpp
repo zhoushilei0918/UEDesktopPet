@@ -3,6 +3,10 @@
 // 统一参数校验，蓝图 Setter、整组配置和 ini 都使用同一规则。
 void FDesktopPetConfig::Normalize()
 {
+    // 在启动/应用配置时解析继承值；非法 ini 或蓝图枚举回退到可发现的标准应用窗口。
+    if(WindowMode==EDesktopPetWindowMode::ProjectDefault)WindowMode=GetDefault<UDesktopPetSettings>()->WindowMode;
+    if(WindowMode!=EDesktopPetWindowMode::Application&&WindowMode!=EDesktopPetWindowMode::ToolWindow)
+        WindowMode=EDesktopPetWindowMode::Application;
     // 图集采用二次幂，避免引擎隐式向上取整造成配置值与实际占用不一致。
     ShadowPageCapacity=FMath::RoundUpToPowerOfTwo(FMath::Clamp(ShadowPageCapacity,512,16384));
     SurfaceCacheCapacity=FMath::RoundUpToPowerOfTwo(FMath::Clamp(SurfaceCacheCapacity,1024,8192));
@@ -40,6 +44,7 @@ FIntPoint FDesktopPetConfig::GetDisplaySize() const
 FDesktopPetConfig UDesktopPetSettings::MakeRuntimeConfig() const
 {
     FDesktopPetConfig Result;
+    Result.WindowMode = WindowMode;
     Result.WindowSize = WindowSize;
     Result.WindowPosition = WindowPosition;
     Result.DisplayScale = DisplayScale;

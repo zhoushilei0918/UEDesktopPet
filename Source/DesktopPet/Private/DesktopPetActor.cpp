@@ -238,6 +238,12 @@ void ADesktopPetActor::PetSetDisplayScale(float Value)
     auto C=PetGetRuntimeConfig();C.DisplayScale=Value;PetApplyRuntimeConfig(C);
 }
 
+// 运行时只替换系统窗口身份，其他实例参数及配置应用时序保持一致。
+void ADesktopPetActor::PetSetWindowMode(EDesktopPetWindowMode Mode)
+{
+    auto C=PetGetRuntimeConfig();C.WindowMode=Mode;PetApplyRuntimeConfig(C);
+}
+
 // 运行时更新 bAlwaysOnTop；保留其他实例参数。
 void ADesktopPetActor::PetSetAlwaysOnTop(bool Value)
 {
