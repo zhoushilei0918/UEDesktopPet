@@ -48,6 +48,7 @@ FDesktopPetConfig UDesktopPetSettings::MakeRuntimeConfig() const
     Result.WindowMode = WindowMode;
     Result.bAllowScreenCapture = bAllowScreenCapture;
     Result.bLimitEngineFrameRate = bLimitEngineFrameRate;
+    Result.bUseGPUCompositing = bUseGPUCompositing;
     Result.TrayFrameRate = TrayFrameRate;
     Result.WindowSize = WindowSize;
     Result.WindowPosition = WindowPosition;

@@ -333,6 +333,8 @@ void ADesktopPetActor::PetSetAllowScreenCapture(bool bAllow)
 {auto C=PetGetRuntimeConfig();C.bAllowScreenCapture=bAllow;PetApplyRuntimeConfig(C);}
 void ADesktopPetActor::PetSetLimitEngineFrameRate(bool bEnabled)
 {auto C=PetGetRuntimeConfig();C.bLimitEngineFrameRate=bEnabled;PetApplyRuntimeConfig(C);}
+void ADesktopPetActor::PetSetGPUCompositingEnabled(bool bEnabled)
+{auto C=PetGetRuntimeConfig();C.bUseGPUCompositing=bEnabled;PetApplyRuntimeConfig(C);}
 void ADesktopPetActor::PetSetTrayFrameRate(int32 FPS)
 {auto C=PetGetRuntimeConfig();C.TrayFrameRate=FPS;PetApplyRuntimeConfig(C);}
 float ADesktopPetActor::PetGetEffectiveEngineFrameRateLimit() const

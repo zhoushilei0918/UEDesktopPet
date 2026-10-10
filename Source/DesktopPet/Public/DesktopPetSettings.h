@@ -18,9 +18,12 @@ public:
     /** 正常进程始终在任务管理器可见。此项仅控制 Windows 对窗口的捕获许可；部分旧捕获路径可能不遵循排除设置。 */
     UPROPERTY(Config, EditAnywhere, Category="窗口标记", meta=(DisplayName="允许屏幕捕获"))
     bool bAllowScreenCapture=true;
-    /** 独立透明桌宠自动限制引擎主循环；30 FPS 输出使用最高 120 Hz 调度。PIE/普通游戏视口不受影响，不降低图像质量。 */
+    /** 独立桌宠从两倍输出频率（至少 60 Hz）开始；输出不足时增加至最多四倍。PIE/普通游戏视口不受影响。 */
     UPROPERTY(Config, EditAnywhere, Category="性能", meta=(DisplayName="自动限制引擎帧率"))
     bool bLimitEngineFrameRate=true;
+    /** 在 GPU 合成窗口像素，保留原画质并减少回读；关闭可回退 CPU 兼容路径。 */
+    UPROPERTY(Config, EditAnywhere, Category="Performance", meta=(DisplayName="GPU 像素合成"))
+    bool bUseGPUCompositing=true;
     /** 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 */
     UPROPERTY(Config, EditAnywhere, Category="性能", meta=(DisplayName="托盘后台帧率", ClampMin="1", ClampMax="30"))
     int32 TrayFrameRate=5;

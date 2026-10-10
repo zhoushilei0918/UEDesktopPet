@@ -30,6 +30,9 @@ struct DESKTOPPET_API FDesktopPetConfig
     /** 独立透明桌宠自动限制引擎主循环；30 FPS 输出使用最高 120 Hz 调度。PIE/普通游戏视口不受影响，不降低图像质量。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Performance", meta=(DisplayName="自动限制引擎帧率"))
     bool bLimitEngineFrameRate=true;
+    /** 在 GPU 合成窗口像素，保留原画质并减少回读；关闭可回退 CPU 兼容路径。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Performance", meta=(DisplayName="GPU 像素合成"))
+    bool bUseGPUCompositing=true;
     /** 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="DesktopPet|Performance", meta=(DisplayName="托盘后台帧率", ClampMin="1", ClampMax="30"))
     int32 TrayFrameRate=5;

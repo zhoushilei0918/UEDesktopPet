@@ -119,6 +119,10 @@ public:
     /** 启停独立桌宠的主循环限帧；关闭后恢复项目自己的上限。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Performance") void PetSetLimitEngineFrameRate(bool bEnabled);
     /** 查询自动限帧开关。 */
+    /** 下一次捕获使用 GPU 合成；不会修改角色、UI、材质或项目渲染设置。 */
+    UFUNCTION(BlueprintCallable,Category="DesktopPet|Performance") void PetSetGPUCompositingEnabled(bool bEnabled);
+    /** 读取实例请求的合成方式。 */
+    UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Performance") bool PetGetGPUCompositingEnabled() const {return PetGetRuntimeConfig().bUseGPUCompositing;}
     UFUNCTION(BlueprintPure,Category="DesktopPet Utility|Performance") bool PetGetLimitEngineFrameRate() const {return PetGetRuntimeConfig().bLimitEngineFrameRate;}
     /** 设置全部实例收起时的后台 Tick 上限，允许 1–30 Hz。 */
     UFUNCTION(BlueprintCallable,Category="DesktopPet|Performance") void PetSetTrayFrameRate(int32 FPS);

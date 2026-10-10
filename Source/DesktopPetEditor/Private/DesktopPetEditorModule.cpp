@@ -1,4 +1,12 @@
 #include "DesktopPetEditorSubsystem.h"
+#include "DesktopPetPackagingSettings.h"
+#include "IDetailCustomization.h"
+#include "DetailLayoutBuilder.h"
+#include "DetailCategoryBuilder.h"
+#include "DetailWidgetRow.h"
+#include "PropertyEditorModule.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Editor.h"
 #include "Interfaces/IPluginManager.h"
 #include "ISettingsModule.h"
@@ -10,6 +18,26 @@
 
 #define LOCTEXT_NAMESPACE "DesktopPetEditor"
 
+/** 项目设置使用默认对象；普通 CallInEditor 按钮会被默认对象过滤，需显式绘制。 */
+class FDesktopPetPackagingDetails : public IDetailCustomization
+{
+public:
+    static TSharedRef<IDetailCustomization> MakeInstance(){return MakeShared<FDesktopPetPackagingDetails>();}
+    virtual void CustomizeDetails(IDetailLayoutBuilder& Builder) override
+    {
+        Builder.EditCategory(TEXT("发布")).AddCustomRow(LOCTEXT("ApplyNameSearch","应用名称到打包程序"))
+        .WholeRowContent()[
+            SNew(SButton)
+            .Text(LOCTEXT("ApplyName","应用名称到打包程序"))
+            .ToolTipText(LOCTEXT("ApplyNameTip","关闭打包程序后点击，同时更新启动器和游戏程序的显示名称。重新打包后需再次应用。"))
+            .OnClicked_Lambda([]{
+                GetMutableDefault<UDesktopPetPackagingSettings>()->PetApplyPackagedName();
+                return FReply::Handled();
+            })
+        ];
+    }
+};
+
 /** 模块只负责按钮和图标注册，配置业务由编辑器子系统统一实现。 */
 class FDesktopPetEditorModule : public IModuleInterface
 {
@@ -17,6 +45,8 @@ public:
     virtual void StartupModule() override
     {
         if (IsRunningCommandlet()) return;
+        FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"))
+            .RegisterCustomClassLayout(TEXT("DesktopPetPackagingSettings"),FOnGetDetailCustomizationInstance::CreateStatic(&FDesktopPetPackagingDetails::MakeInstance));
         const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("DesktopPet"));
         if (!Plugin) return;
         Style = MakeShared<FSlateStyleSet>(TEXT("DesktopPetEditorStyle"));
@@ -32,6 +62,8 @@ public:
         // 热重载、关闭编辑器时一并移除回调，避免重复工具栏或悬空图标。
         UToolMenus::UnRegisterStartupCallback(this);
         UToolMenus::UnregisterOwner(this);
+        if(auto* PropertyEditor=FModuleManager::GetModulePtr<FPropertyEditorModule>(TEXT("PropertyEditor")))
+            PropertyEditor->UnregisterCustomClassLayout(TEXT("DesktopPetPackagingSettings"));
         if (Style) { FSlateStyleRegistry::UnRegisterSlateStyle(*Style); Style.Reset(); }
     }
 
@@ -62,6 +94,11 @@ private:
             FUIAction(FExecuteAction::CreateLambda([] {
                 if (auto* Settings = FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings")))
                     Settings->ShowViewer(TEXT("Project"), TEXT("Pet"), TEXT("DesktopPetSettings"));
+            })));
+        Section.AddMenuEntry(TEXT("DesktopPet.PackagingName"),LOCTEXT("PackagingName","打包程序名称"),LOCTEXT("PackagingNameTip","配置任务管理器显示名称，并应用到已打包的启动器和游戏 EXE。"),Icon,
+            FUIAction(FExecuteAction::CreateLambda([] {
+                if(auto* Settings=FModuleManager::GetModulePtr<ISettingsModule>(TEXT("Settings")))
+                    Settings->ShowViewer(TEXT("Project"),TEXT("Pet"),TEXT("DesktopPetPackagingSettings"));
             })));
     }
 };

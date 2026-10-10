@@ -10,7 +10,10 @@ void DesktopPetCompositor::Composite(const TArray<FFloat16>& Opacity,const TArra
     const float Inv=1.f/(S*S);
     Pet.SetNumUninitialized(Width*Height);
     Out.SetNumUninitialized(Width*Height);SceneAlpha.SetNumUninitialized(Width*Height);
-    ParallelFor(Height,[&](int32 Y)
+    // 小画面最多约 8 个批次，减少短任务唤醒；放大后保持充分并行，避免拉长帧时间。
+    // 只改变任务划分，像素采样和浮点运算顺序保持不变。
+    const int32 BatchRows=int64(Width)*Height*S*S<=500000?FMath::Max(32,FMath::DivideAndRoundUp(Height,8)):1;
+    ParallelFor(TEXT("DesktopPet.Resolve"),Height,BatchRows,[&](int32 Y)
     {
         for(int32 X=0;X<Width;++X)
         {
@@ -23,6 +26,12 @@ void DesktopPetCompositor::Composite(const TArray<FFloat16>& Opacity,const TArra
                 Coverage+=FMath::Clamp(1.f-float(Opacity[J]),0.f,1.f);
             }
             Sum*=Inv*Config.Exposure;float A=FMath::Clamp(Coverage*Inv,0.f,1.f);
+            // 无几何覆盖且无发光的背景必定输出全零，跳过无效的 sRGB 和预乘计算。
+            // 只跳过严格为黑的背景，保留任何微弱的半透明或加法光效。
+            if(A<=0.00001f&&(!Config.bPreserveAdditiveEffects||(Sum.R==0.f&&Sum.G==0.f&&Sum.B==0.f)))
+            {
+                const int32 I=Y*Width+X;SceneAlpha[I]=0;Pet[I]=FColor(0,0,0,0);continue;
+            }
             FColor RGB=FColor::Black;
             if(A>0.00001f)RGB=(Sum/A).ToFColorSRGB();
             else if(Config.bPreserveAdditiveEffects)
@@ -37,7 +46,9 @@ void DesktopPetCompositor::Composite(const TArray<FFloat16>& Opacity,const TArra
             Pet[I]=FColor(FMath::Min(int32(Alpha),FMath::RoundToInt(RGB.R*A)),FMath::Min(int32(Alpha),FMath::RoundToInt(RGB.G*A)),FMath::Min(int32(Alpha),FMath::RoundToInt(RGB.B*A)),Alpha);
         }
     });
-    ParallelFor(Height,[&](int32 Y)
+    // 没有锐化和 UI 时，第一遍已经给出最终像素，直接复制即可。
+    if(Config.Sharpness<=0.f&&UI.IsEmpty()){Out=Pet;return;}
+    ParallelFor(TEXT("DesktopPet.SharpenAndUI"),Height,BatchRows,[&](int32 Y)
     {
         for(int32 X=0;X<Width;++X)
         {
@@ -56,7 +67,9 @@ void DesktopPetCompositor::Composite(const TArray<FFloat16>& Opacity,const TArra
                     C.R=Sharpen(C.R,L.R,R.R,T.R,B.R);C.G=Sharpen(C.G,L.G,R.G,T.G,B.G);C.B=Sharpen(C.B,L.B,R.B,T.B,B.B);
                 }
             }
-            const FColor U=UI.IsEmpty()?FColor(0,0,0,0):UI[I];const float Remain=1.f-U.A/255.f;
+            // 无 UI（或此处 UI 完全透明）时跳过恒等的混合运算，保留原始字节。
+            if(UI.IsEmpty()||UI[I]==FColor(0,0,0,0)){Out[I]=C;continue;}
+            const FColor U=UI[I];const float Remain=1.f-U.A/255.f;
             FColor Result;Result.A=FMath::Clamp(FMath::RoundToInt(U.A+C.A*Remain),0,255);
             Result.R=FMath::Clamp(FMath::RoundToInt(U.R+C.R*Remain),0,int32(Result.A));
             Result.G=FMath::Clamp(FMath::RoundToInt(U.G+C.G*Remain),0,int32(Result.A));

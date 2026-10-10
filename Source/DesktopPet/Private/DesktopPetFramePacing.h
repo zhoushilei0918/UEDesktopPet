@@ -9,6 +9,8 @@ class FDesktopPetFramePacing
 public:
     /** 每个运行实例登记自己的需求；多个实例采用最高需求，普通游戏窗口/PIE 不限速。 */
     static void Update(const ADesktopPetActor* Owner,const FDesktopPetConfig& Config,bool bInTray);
+    /** 以实际输出帧计数检测调度余量不足，必要时提高主循环预算，优先保住输出帧率。 */
+    static void ObserveFrames(const ADesktopPetActor* Owner,uint64 PresentedFrames);
     /** 最后一个实例释放时撤销本插件的 CVar 层，恢复项目原设置。 */
     static void Release(const ADesktopPetActor* Owner);
     /** 模块卸载也必须撤销预算，不能给后续 PIE 留下全局副作用。 */

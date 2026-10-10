@@ -10,6 +10,7 @@
 #include "Widgets/SOverlay.h"
 #include "Blueprint/UserWidget.h"
 #include "DesktopPetCompositor.h"
+#include "DesktopPetGPUCompositor.h"
 #include "DesktopPetPresentation.h"
 #include "DesktopPetWindowGuard.h"
 #include "Widgets/SNullWidget.h"
@@ -55,6 +56,11 @@ struct FPetDpiScope
 /** 一次异步 GPU 回读的生命周期，渲染线程写入数据，游戏线程等待 Complete 后消费。 */
 struct FPetReadback
 {
+    /** 只读回窗口分辨率的颜色和场景命中 Alpha，无需传输完整 SSAA 图像。 */
+    FRHIGPUBufferReadback Packed{TEXT("DesktopPetPacked")};
+    TArray<DesktopPetGPUCompositor::FPackedPixel> PackedPixels;
+    FDesktopPetConfig FrameConfig;
+    bool UseGPU=false;
     FRHIGPUTextureReadback UI{TEXT("DesktopPetUI")};
     /** 与覆盖率同一帧的引擎最终颜色，单独读回而不牺牲 Alpha。 */
     FRHIGPUTextureReadback FinalColor{TEXT("DesktopPetFinalColor")};
@@ -123,6 +129,7 @@ struct FDesktopPetRuntime
     int32 CoverageSamples=0;
     uint64 ReadbackPayloadBytes=0,ReadbackAllocations=0;
     double CompositeMilliseconds=0;
+    bool LastFrameUsedGPU=false;
     bool HasUI=false;
     FString Backend,LastAction;
     // Width/Height 是捕获尺寸，DisplaySize 是已经提交给 Windows 的真实尺寸。
@@ -194,6 +201,9 @@ struct FDesktopPetRuntime
         ZoomCommitPending=false;
         if(!PreserveGesture)Zooming=false;
         if(NewConfig.TargetFrameRate!=Config.TargetFrameRate||Resize)NextCaptureTime=0.;
+        // 切换兼容路径时回收旧 staging 资源，避免保留两套回读缓存。
+        if(NewConfig.bUseGPUCompositing!=Config.bUseGPUCompositing)
+        {FlushRenderingCommands();Pending.Reset();ReusableReadback.Reset();}
         Config=NewConfig;
         ReadConfig();
         if(WindowModeChanged){ReleaseHeldInput();ApplyWindowMode();}
@@ -596,15 +606,28 @@ struct FDesktopPetRuntime
     {
         FPetDpiScope DpiScope;
         const double Begin=FPlatformTime::Seconds();
-        CoverageSamples=0;
-        if(Diagnostics)for(const FFloat16 A:F.OpacityPixels)CoverageSamples+=float(A)<1.f?1:0;
-        ReadbackPayloadBytes=uint64(F.SceneWidth)*F.SceneHeight*10+(F.HasUI?uint64(Width)*Height*4:0);
-        DesktopPetCompositor::Composite(F.OpacityPixels,F.UIPixels,Width,Height,Config,CapturedPixels,CapturedAlpha,F.FinalColorPixels,PetScratch);
+        LastFrameUsedGPU=F.UseGPU;
+        CoverageSamples=F.UseGPU?-1:0;
+        if(F.UseGPU)
+        {
+            const int32 Count=F.Width*F.Height;
+            CapturedPixels.SetNumUninitialized(Count);CapturedAlpha.SetNumUninitialized(Count);
+            // GPU 已经完成量化和合成；CPU 只拆分 Windows 像素与交互 Alpha，不做颜色运算。
+            for(int32 I=0;I<Count;++I){CapturedPixels[I].DWColor()=F.PackedPixels[I].BGRA;CapturedAlpha[I]=uint8(F.PackedPixels[I].SceneAlpha);}
+            ReadbackPayloadBytes=uint64(Count)*sizeof(DesktopPetGPUCompositor::FPackedPixel);
+        }
+        else
+        {
+            if(Diagnostics)for(const FFloat16 A:F.OpacityPixels)CoverageSamples+=float(A)<1.f?1:0;
+            ReadbackPayloadBytes=uint64(F.SceneWidth)*F.SceneHeight*10+(F.HasUI?uint64(Width)*Height*4:0);
+            DesktopPetCompositor::Composite(F.OpacityPixels,F.UIPixels,Width,Height,F.FrameConfig,CapturedPixels,CapturedAlpha,F.FinalColorPixels,PetScratch);
+        }
         CapturedSize=FIntPoint(Width,Height);
         CompositeMilliseconds=(FPlatformTime::Seconds()-Begin)*1000.;
         RECT Rect{};GetWindowRect(Window,&Rect);
         Present(DisplaySize,FIntPoint(Rect.left,Rect.top));
         ++Frames;
+        FDesktopPetFramePacing::ObserveFrames(Owner,Frames);
     }
     // 模型与 UI 分开绘制，RHI 接口同时兼容 DX11/DX12；只保留一个在途请求。
     void CaptureFrame(float Delta)
@@ -620,11 +643,21 @@ struct FDesktopPetRuntime
             }
             else if(Pending->Complete.Load())
             {if(!Shell.IsInTray())Composite(*Pending);ReusableReadback=Pending;Pending.Reset();}
-            else if(Pending->Submitted.Load()&&!Pending->Copying.Load()&&(!Pending->HasUI||Pending->UI.IsReady())&&Pending->FinalColor.IsReady()&&Pending->Geometry.IsReady())
+            else if(Pending->Submitted.Load()&&!Pending->Copying.Load()&&(Pending->UseGPU?Pending->Packed.IsReady():((!Pending->HasUI||Pending->UI.IsReady())&&Pending->FinalColor.IsReady()&&Pending->Geometry.IsReady())))
             {
                 Pending->Copying.Store(true);auto Frame=Pending;
                 ENQUEUE_RENDER_COMMAND(DesktopPetReadback)([Frame](FRHICommandListImmediate& Cmd)
                 {
+                    if(Frame->UseGPU)
+                    {
+                        const int32 Count=Frame->Width*Frame->Height;
+                        const uint32 Bytes=Count*sizeof(DesktopPetGPUCompositor::FPackedPixel);
+                        const void* Data=Frame->Packed.Lock(Bytes);
+                        if(!Data){Frame->Failed.Store(true);return;}
+                        Frame->PackedPixels.SetNumUninitialized(Count);
+                        FMemory::Memcpy(Frame->PackedPixels.GetData(),Data,Bytes);
+                        Frame->Packed.Unlock();Frame->Complete.Store(true);return;
+                    }
                     int32 Pitch=0;
                     {
                         const auto* C=static_cast<const FFloat16Color*>(Frame->FinalColor.Lock(Pitch));
@@ -669,6 +702,7 @@ struct FDesktopPetRuntime
         auto Frame=ReusableReadback;ReusableReadback.Reset();
         if(!Frame){Frame=MakeShared<FPetReadback,ESPMode::ThreadSafe>();++ReadbackAllocations;}
         Frame->Submitted.Store(false);Frame->Copying.Store(false);Frame->Complete.Store(false);Frame->Failed.Store(false);Frame->HasUI=HasUI;
+        Frame->UseGPU=DesktopPetGPUCompositor::IsEnabled(Config);Frame->FrameConfig=Config;
         Pending=Frame;
         Frame->Width=Width;Frame->Height=Height;Frame->SceneWidth=Width*Scale;Frame->SceneHeight=Height*Scale;
         FTextureRenderTargetResource* UR=Owner->UITarget->GameThread_GetRenderTargetResource();
@@ -676,6 +710,12 @@ struct FDesktopPetRuntime
         FTextureRenderTargetResource* GR=Owner->GeometryTarget->GameThread_GetRenderTargetResource();
         ENQUEUE_RENDER_COMMAND(DesktopPetCopy)([Frame,UR,CR,GR](FRHICommandListImmediate& Cmd)
         {
+            if(Frame->UseGPU)
+            {
+                DesktopPetGPUCompositor::Enqueue(Cmd,CR->GetRenderTargetTexture(),GR->GetRenderTargetTexture(),
+                    Frame->HasUI?UR->GetRenderTargetTexture():nullptr,FIntPoint(Frame->Width,Frame->Height),Frame->FrameConfig,Frame->Packed);
+                Frame->Submitted.Store(true);return;
+            }
             if(Frame->HasUI)
             {
                 FRHITexture* UT=UR->GetRenderTargetTexture();
@@ -745,6 +785,9 @@ struct FDesktopPetRuntime
         J->SetNumberField(TEXT("readback_payload_bytes"),ReadbackPayloadBytes);
         J->SetNumberField(TEXT("readback_allocations"),ReadbackAllocations);
         J->SetNumberField(TEXT("composite_cpu_ms"),CompositeMilliseconds);
+        J->SetBoolField(TEXT("gpu_composite"),LastFrameUsedGPU);
+        J->SetBoolField(TEXT("coverage_samples_available"),!LastFrameUsedGPU);
+        J->SetNumberField(TEXT("gpu_composite_working_bytes"),LastFrameUsedGPU?uint64(RenderWidth)*RenderHeight*12:0);
         J->SetNumberField(TEXT("owned_render_target_bytes"),uint64(RenderWidth)*RenderHeight*(18*Scale*Scale+4));
         J->SetBoolField(TEXT("hidden_world_rendering_disabled"),!GIsEditor&&GEngine&&GEngine->GameViewport&&GEngine->GameViewport->bDisableWorldRendering);
         J->SetBoolField(TEXT("compact_memory_requested"),Config.bCompactMemory);

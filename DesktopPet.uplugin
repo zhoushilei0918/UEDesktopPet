@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
-  "Version": 46,
-  "VersionName": "4.6",
+  "Version": 47,
+  "VersionName": "4.7",
   "FriendlyName": "Desktop Pet — Transparent Window",
   "Description": "通用 Win64 透明窗口、完整蓝图 Getter、Actor 白名单交互、UMG、Niagara 和 SSAA。",
   "Category": "Desktop",

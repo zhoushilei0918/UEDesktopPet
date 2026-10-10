@@ -10,7 +10,8 @@ namespace DesktopPetPresentation
     {
         if(From==To){Pixels=Source;Alpha=SourceAlpha;return;}
         Pixels.SetNumUninitialized(To.X*To.Y);Alpha.SetNumUninitialized(To.X*To.Y);
-        ParallelFor(To.Y,[&](int32 Y)
+        // 和合成器一致，缩放也采用较大批次，避免一次小窗口缩放唤醒全部 CPU 核心。
+        ParallelFor(TEXT("DesktopPet.Resample"),To.Y,FMath::Max(32,FMath::DivideAndRoundUp(To.Y,4)),[&](int32 Y)
         {
             const double SY=FMath::Clamp((Y+.5)*From.Y/To.Y-.5,0.,double(From.Y-1));
             const int32 Y0=FMath::FloorToInt(SY),Y1=FMath::Min(Y0+1,From.Y-1);
