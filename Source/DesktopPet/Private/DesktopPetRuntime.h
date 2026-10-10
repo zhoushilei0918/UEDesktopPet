@@ -4,6 +4,7 @@
 #include "DesktopPetMemory.h"
 #include "DesktopPetFramePacing.h"
 #include "DesktopPetShell.h"
+#include "DesktopPetApplicationName.h"
 #include "DesktopPetRenderPolicy.h"
 #include "DesktopPetSettings.h"
 #include "DesktopPetViewExtension.h"
@@ -442,7 +443,7 @@ struct FDesktopPetRuntime
         WC.style=CS_DBLCLKS;
         WC.lpszClassName=L"UE58DesktopPetWindow";WC.hCursor=LoadCursor(nullptr,IDC_ARROW);
         RegisterClassExW(&WC);
-        const FString Title=FString::Printf(TEXT("DesktopPet - %s"),*Backend);
+        const FString Title=DesktopPetApplicationName::Get();
         Window=CreateWindowExW(WS_EX_LAYERED|WS_EX_APPWINDOW|(Topmost?WS_EX_TOPMOST:0),WC.lpszClassName,*Title,WS_POPUP,Config.WindowPosition.X,Config.WindowPosition.Y,Width,Height,nullptr,nullptr,WC.hInstance,this);
         if(!Window){UE_LOG(LogDesktopPet,Error,TEXT("CreateWindow failed: %u"),GetLastError());return false;}
         Shell.Attach(Window);

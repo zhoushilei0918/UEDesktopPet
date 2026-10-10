@@ -38,7 +38,10 @@ NOTIFYICONDATAW FDesktopPetShell::MakeIconData() const
 {
     NOTIFYICONDATAW Data{};Data.cbSize=sizeof(Data);Data.hWnd=Window;Data.uID=1;
     Data.uFlags=NIF_MESSAGE|NIF_ICON|NIF_TIP|NIF_SHOWTIP;Data.uCallbackMessage=CallbackMessage;Data.hIcon=Icon;
-    FCString::Strncpy(Data.szTip,TEXT("Desktop Pet — 双击恢复桌宠"),UE_ARRAY_COUNT(Data.szTip));
+    // 托盘提示沿用窗口名称，不额外引入第二个名称设置。
+    TCHAR Title[129]{};GetWindowTextW(Window,Title,UE_ARRAY_COUNT(Title));
+    const FString Tip=FString(Title)+TEXT(" — 双击恢复桌宠");
+    FCString::Strncpy(Data.szTip,*Tip,UE_ARRAY_COUNT(Data.szTip));
     return Data;
 }
 bool FDesktopPetShell::AddTrayIcon()

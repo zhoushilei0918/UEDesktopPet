@@ -9,7 +9,7 @@ public class DesktopPetEditor : ModuleRules
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "EditorSubsystem" });
         PrivateDependencyModuleNames.AddRange(new[] {
             "Engine", "DesktopPet", "UnrealEd", "EngineSettings", "DeveloperSettings", "DeveloperToolSettings",
-            "Slate", "SlateCore", "ToolMenus", "LevelEditor", "Projects", "Settings", "PropertyEditor"
+            "Slate", "SlateCore", "ToolMenus", "LevelEditor", "Projects", "Settings"
         });
     }
 }

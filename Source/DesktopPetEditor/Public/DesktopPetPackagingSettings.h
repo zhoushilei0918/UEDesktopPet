@@ -1,25 +1,18 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
-#include "Engine/EngineTypes.h"
 #include "DesktopPetPackagingSettings.generated.h"
 
-/** 只在编辑器处理已经打包的 EXE 版本资源；桌宠运行时不依赖此工具。 */
+/** 正常 Win64 打包时自动设置启动器与桌宠名称，只需填写一个名称。 */
 UCLASS(Config=Editor,DefaultConfig,meta=(DisplayName="打包程序名称"))
 class DESKTOPPETEDITOR_API UDesktopPetPackagingSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
 public:
     UDesktopPetPackagingSettings();
-    /** 留空沿用 UE 默认打包命名；填写后可应用为任务管理器“进程”页名称。支持中文；不改 EXE 文件名或工程名。 */
-    UPROPERTY(Config,EditAnywhere,Category="发布",meta=(DisplayName="自定义程序显示名称（留空使用 UE 默认）"))
+    /** 例如 WocaoKe：入口文件为 WocaoKe.exe，启动器显示为 WocaoKeGame，桌宠为 WocaoKe。输入有效的 Windows 文件名，不含 .exe 扩展名。留空使用 UE 项目名称，未设置项目名称时使用工程名。重新打包自动生效。 */
+    UPROPERTY(Config,EditAnywhere,Category="发布",meta=(DisplayName="程序名称（留空使用 UE 默认）"))
     FString PetApplicationName;
-    /** 选择打包目录最外层的启动 EXE，可同时处理启动器和它指向的游戏 EXE。 */
-    UPROPERTY(Config,EditAnywhere,Category="发布",meta=(DisplayName="已打包入口 EXE",FilePathFilter="exe"))
-    FFilePath PetPackagedExecutable;
-    /** 关闭已运行的打包程序后应用；重新打包会覆盖版本资源，需重新应用。已签名文件不处理。 */
-    void PetApplyPackagedName();
-    /** 蓝图/工具调用入口；返回完整结果，同一次处理涵盖启动器和游戏程序。 */
-    UFUNCTION(BlueprintCallable,Category="DesktopPet Utility|Editor")
-    bool PetApplyNameToExecutable(const FString& ExecutablePath,const FString& DisplayName,FString& Result);
+    /** 模块自动登记 UAT 扩展；不暴露按钮、路径或蓝图操作。 */
+    static void EnsurePackagingAutomation();
 };
