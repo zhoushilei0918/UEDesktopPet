@@ -1,0 +1,272 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "InputCoreTypes.h"
+#include "DesktopPetTypes.generated.h"
+class AActor;
+
+/** 任务栏显示策略；保留旧枚举标识以兼容已经保存的蓝图和地图。 */
+UENUM(BlueprintType)
+enum class EDesktopPetWindowMode : uint8
+{
+    /** 实例沿用项目设置；旧地图新增此字段后也能继承项目默认值。 */
+    ProjectDefault UMETA(DisplayName = "使用项目设置"),
+    /** 显示任务栏按钮；桌宠使用普通应用窗口身份。 */
+    Application UMETA(DisplayName = "显示任务栏按钮"),
+    /** 不显示任务栏按钮；不再使用 WS_EX_TOOLWINDOW，仍可出现在常规窗口捕获列表。 */
+    ToolWindow UMETA(DisplayName = "隐藏任务栏按钮")
+};
+
+/** 一个桌宠实例的完整配置；可在蓝图中 Make / Set Members 后交给 PetApplyRuntimeConfig。 */
+USTRUCT(BlueprintType)
+struct DESKTOPPET_API FDesktopPetConfig
+{
+    GENERATED_BODY()
+    /** 控制桌宠的任务栏按钮；默认继承 Project Settings → Pet。枚举标识保留以兼容旧地图，窗口保持普通可捕获身份。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window", meta = (DisplayName = "任务栏显示"))
+    EDesktopPetWindowMode WindowMode = EDesktopPetWindowMode::ProjectDefault;
+    /** 正常进程始终在任务管理器可见。此项仅控制 Windows 对窗口的捕获许可；部分旧捕获路径可能不遵循排除设置。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window", meta = (DisplayName = "允许屏幕捕获"))
+    bool bAllowScreenCapture = true;
+    /** 独立透明桌宠自动限制引擎主循环；30 FPS 输出使用最高 60 Hz 调度。PIE/普通游戏视口不受影响，不降低图像质量。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Performance",
+              meta = (DisplayName = "自动限制引擎帧率"))
+    bool bLimitEngineFrameRate = true;
+    /** 在 GPU 合成窗口像素，保留原画质并减少回读；关闭可回退 CPU 兼容路径。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Performance",
+              meta = (DisplayName = "GPU 像素合成"))
+    bool bUseGPUCompositing = true;
+    /** 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Performance",
+              meta = (DisplayName = "托盘后台帧率", ClampMin = "1", ClampMax = "30"))
+    int32 TrayFrameRate = 5;
+    /** 关闭时失去焦点后静音；开启时使用后台音量倍率。影响同进程全部声音，不暂停播放进度。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Audio",
+              meta = (DisplayName = "允许后台播放声音"))
+    bool bAllowBackgroundAudio = true;
+    /** 后台音量相对正常音量的比例：0 为静音、1 为保持原音量；多个桌宠实例取最高有效倍率。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Audio",
+              meta = (DisplayName = "后台音量倍率",
+                      ClampMin = "0",
+                      ClampMax = "1",
+                      UIMin = "0",
+                      UIMax = "1",
+                      EditCondition = "bAllowBackgroundAudio"))
+    float BackgroundVolumeMultiplier = 1.f;
+    /** 在桌宠原窗口最上层显示项目 UMG 光标，避免原生光标显示路径的色差；关闭可恢复 Windows 原生显示。硬件 CUR/ANI 仍使用原生路径。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Cursor",
+              meta = (DisplayName = "光标与窗口统一合成"))
+    bool bCompositeSoftwareCursor = true;
+    /** 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口；普通窗口使用项目自己的相机。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    bool bTransparentWindowEnabled = true;
+    /** 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    bool bCenterAnchoredScaling = true;
+    /** 在人物上滚动鼠标滚轮时自动缩放，无需增强输入。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Input")
+    bool bEnableWheelZoom = true;
+    /** 每格滚轮的相对缩放量，例如 0.1 表示约 10%。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Input",
+              meta = (ClampMin = "0.01", ClampMax = "0.5"))
+    float WheelZoomStep = 0.1f;
+    /** 鼠标锚点缩放的过渡秒数；使用真实时间，不受游戏时间倍率影响，0 表示立即完成。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Input", meta = (ClampMin = "0", ClampMax = "1"))
+    float ZoomAnimationSeconds = 0.18f;
+    /** 仅在不透明内部做受限锐化，保留边缘 Alpha，0 表示关闭。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Quality",
+              meta = (ClampMin = "0", ClampMax = "1"))
+    float Sharpness = 0.2f;
+    /** 窗口的逻辑画布尺寸；最终物理尺寸还要乘以 DisplayScale。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    FIntPoint WindowSize = FIntPoint(600, 760);
+    /** 窗口左上角在虚拟桌面中的物理像素坐标，允许负坐标。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    FIntPoint WindowPosition = FIntPoint(120, 100);
+    /** 整个显示面的缩放倍率，人物与 UI 同步缩放；不是修改角色世界缩放。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Window",
+              meta = (ClampMin = "0.01", ClampMax = "32"))
+    float DisplayScale = 1.f;
+    /** 请求的最小显示倍率；与物理窗体尺寸限制共同生效，冲突时优先满足尺寸限制。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Window|Limits",
+              meta = (DisplayName = "最小缩放倍率", ClampMin = "0.01", ClampMax = "32"))
+    float MinDisplayScale = 0.25f;
+    /** 请求的最大显示倍率；有效范围还会受最终物理窗体尺寸限制。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Window|Limits",
+              meta = (DisplayName = "最大缩放倍率", ClampMin = "0.01", ClampMax = "32"))
+    float MaxDisplayScale = 3.f;
+    /** 最终显示窗口的最小物理像素尺寸，包含人物和 UI；不是未缩放的 WindowSize。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Window|Limits",
+              meta = (DisplayName = "最小窗体尺寸", ClampMin = "16", ClampMax = "2048"))
+    FIntPoint MinWindowSize = FIntPoint(300, 300);
+    /** 最终显示窗口的最大物理像素尺寸；滚轮、蓝图和整组配置均不能突破。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Window|Limits",
+              meta = (DisplayName = "最大窗体尺寸", ClampMin = "16", ClampMax = "2048"))
+    FIntPoint MaxWindowSize = FIntPoint(1000, 1000);
+    /** 是否把桌宠原生窗口置顶。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    bool bAlwaysOnTop = true;
+    /** 隐藏、禁用 UE 游戏窗口并从任务栏/Alt+Tab 中排除；不影响编辑器主窗口。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    bool bHideGameWindow = true;
+    /** 是否允许 PetBeginWindowDrag 启动拖拽。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Input")
+    bool bDraggable = true;
+    /** 用户关闭桌宠时是否退出游戏进程；编辑器 PIE 不退出编辑器。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Window")
+    bool bExitApplicationOnClose = true;
+    /** 每个方向的超采样倍率；2 表示四个采样，保留平滑的边缘 Alpha。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Quality",
+              meta = (ClampMin = "1", ClampMax = "4"))
+    int32 SupersampleScale = 2;
+    /** 透明帧输出频率上限；启用自动限帧时会同时协调引擎调度频率，不降低捕获质量。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Quality",
+              meta = (ClampMin = "5", ClampMax = "60"))
+    int32 TargetFrameRate = 30;
+    /** 捕获颜色的曝光倍数，修改后下一帧生效。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Quality",
+              meta = (ClampMin = "0.01", ClampMax = "16"))
+    float Exposure = 1.f;
+    /** 启用按命中阈值和 UI 命中判定的额外穿透；零 Alpha 像素始终由 Windows 穿透。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Input")
+    bool bClickThroughTransparentPixels = true;
+    /** 接收场景鼠标事件所需的 Alpha，范围 1–255；不会裁剪视觉透明度。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Input",
+              meta = (ClampMin = "1", ClampMax = "255"))
+    int32 HitAlphaThreshold = 8;
+    /** 悬停离开后的交互保持时间；只产生通用进度事件，不创建菜单。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Interaction",
+              meta = (ClampMin = "0", ClampMax = "10"))
+    float MenuCloseDelay = .4f;
+    /** 通用交互展开进度的过渡时间，由项目自行驱动 UI。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Interaction",
+              meta = (ClampMin = "0.01", ClampMax = "5"))
+    float MenuAnimationSeconds = .18f;
+
+    /** 是否捕获普通半透明材质与 Niagara 的半透明粒子。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Effects")
+    bool bCaptureTranslucency = true;
+    /** 对有颜色但无 Alpha 的 Additive 像素重建覆盖率，避免发光粒子被丢弃。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Effects")
+    bool bPreserveAdditiveEffects = true;
+    /** Additive 覆盖率重建强度；Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Effects",
+              meta = (ClampMin = "0.01", ClampMax = "4"))
+    float AdditiveAlphaStrength = 1.f;
+    /** 小型桌宠缓存预算：只在隐藏主窗口的独立游戏中生效；PIE 和普通调试窗口保持项目原值。大型场景可关闭或增加容量。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Memory")
+    bool bCompactMemory = true;
+    /** VSM 阴影页池容量上限，不修改每页精度；页数不足时引擎会降级，增加灯光/模型后应重新评估。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Memory",
+              meta = (ClampMin = "512", ClampMax = "16384"))
+    int32 ShadowPageCapacity = 512;
+    /** Lumen 表面缓存图集的边长上限，不修改单张 Card 的采样密度；复杂场景需要更大的图集。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Memory",
+              meta = (ClampMin = "1024", ClampMax = "8192"))
+    int32 SurfaceCacheCapacity = 1024;
+    /** Lumen 辐射缓存图集每轴的探针数上限，不修改单探针分辨率；有效容量为此值的平方。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Memory",
+              meta = (ClampMin = "64", ClampMax = "256"))
+    int32 RadianceProbeCapacity = 64;
+    /** 可复用渲染目标池保留的最低容量（MiB），不是硬上限；正在使用的纹理永远不会因此被释放。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Memory",
+              meta = (ClampMin = "0", ClampMax = "1000"))
+    int32 IdleRenderTargetPoolMB = 64;
+    /** 将外部配置约束到合法范围，避免超大纹理或除零。 */
+    void Normalize();
+    /** 与物理尺寸限制求交后的有效倍率范围；不修改本结构体。 */
+    FVector2D GetEffectiveDisplayScaleRange() const;
+    /** 逻辑尺寸乘显示缩放后的实际物理像素尺寸，始终遵守窗体上下限。 */
+    FIntPoint GetDisplaySize() const;
+};
+
+/** 与角色、菜单无关的原始指针事件类型。 */
+UENUM(BlueprintType, meta = (ScriptName = "DesktopPetPointerEventType"))
+enum class EDesktopPetPointerEvent : uint8
+{
+    Move,
+    Press,
+    Release,
+    Wheel
+};
+
+/** 传给项目蓝图及自定义输入系统的统一指针数据。 */
+USTRUCT(BlueprintType)
+struct DESKTOPPET_API FDesktopPetPointerEvent
+{
+    GENERATED_BODY()
+    /** 按下、抬起、移动或滚轮。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    EDesktopPetPointerEvent Type = EDesktopPetPointerEvent::Move;
+    /** 鼠标键；移动和滚轮事件可为空键。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    FKey Key;
+    /** 原生窗口内的物理像素坐标。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    FVector2D PixelPosition = FVector2D::ZeroVector;
+    /** 除以显示缩放后的 UI 逻辑画布坐标。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    FVector2D CanvasPosition = FVector2D::ZeroVector;
+    /** 当前相对上一次指针位置的物理像素增量。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    FVector2D Delta = FVector2D::ZeroVector;
+    /** 指针命中的交互白名单 Actor；UI、空白或未选择对象上为空。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    TObjectPtr<AActor> HitActor = nullptr;
+    /** 鼠标滚轮格数；可以为负值。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    float WheelDelta = 0;
+    /** 当前点是否命中交互 UI；项目可以用它决定是否消费输入。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    bool bOverUI = false;
+    /** 当前点是否命中场景 Alpha。 */
+    UPROPERTY(BlueprintReadOnly, Category = "DesktopPet|Input")
+    bool bOverScene = false;
+};
