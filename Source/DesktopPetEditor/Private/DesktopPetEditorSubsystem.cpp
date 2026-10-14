@@ -1,4 +1,5 @@
 #include "DesktopPetEditorSubsystem.h"
+#include "DesktopPetPackagingSettings.h"
 #include "DesktopPetActor.h"
 #include "DesktopPetSettings.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -152,6 +153,9 @@ bool UDesktopPetEditorSubsystem::PetConfigureProject()
     {
         return FinishSetup(false, TEXT("请先把当前关卡保存到项目 Content，再点击配置桌宠。未修改工程。"));
     }
+
+    // 编辑器打开期间清理了生成目录时，一键配置也可重新建立打包入口。
+    UDesktopPetPackagingSettings::EnsurePackagingAutomation();
 
     TArray<AActor*> SelectedModels;
     TArray<ADesktopPetActor*> Hosts, SelectedHosts;

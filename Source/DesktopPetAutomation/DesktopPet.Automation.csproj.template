@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- DesktopPet 自动生成的 UAT 接入；引擎目录由 UAT 注入，不保存机器或工程绝对路径。 -->
+  <Import Project="$(EngineDir)/Source/Programs/Shared/UnrealEngine.csproj.props" />
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>DesktopPet.Automation</AssemblyName>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <Nullable>disable</Nullable>
+    <OutputPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Intermediate/DesktopPetAutomation/bin'))</OutputPath>
+    <BaseIntermediateOutputPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../Intermediate/DesktopPetAutomation/obj/'))</BaseIntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 插件移除后生成入口仍可为空编译，避免残留入口阻断项目打包。 -->
+    <Compile Include="__PET_SOURCE__" Condition="Exists('__PET_SOURCE__')" />
+    <ProjectReference Include="$(EngineDir)/Source/Programs/AutomationTool/AutomationUtils/AutomationUtils.Automation.csproj" />
+    <ProjectReference Include="$(EngineDir)/Source/Programs/Shared/EpicGames.Core/EpicGames.Core.csproj" />
+    <ProjectReference Include="$(EngineDir)/Source/Programs/UnrealBuildTool/UnrealBuildTool.csproj" />
+  </ItemGroup>
+</Project>

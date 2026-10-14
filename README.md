@@ -15,6 +15,7 @@
 - [指针事件与枚举](#指针事件与枚举)
 - [菜单关闭接口](#菜单关闭接口)
 - [保存与恢复规则](#保存与恢复规则)
+- [源码分发与清理生成文件](#源码分发与清理生成文件)
 - [代码职责与本次清理](#代码职责与本次清理)
 
 ## 接入方式与调用约定
@@ -2652,6 +2653,14 @@ UMG 实现此函数。插件在 `PetCloseConfigWidget` 时调用它；返回 **t
 - Setter 后立即 Save 可以保存待应用修改；滚轮动画进行中保存的是此刻已显示的倍率与位置，不是尚未达到的目标倍率。需要保存最终缩放时，等 `PetIsZooming=false` 再保存。
 - 重启窗口不会再次自动覆盖本次运行的新设置。切换 SavedConfigProfile 后若要读取另一个档案，显式调用 Load。
 
+## 源码分发与清理生成文件
+
+- 插件必需文件为 `DesktopPet.uplugin`、`Source/`、`Config/`、`Resources/` 和 `Shaders/`。`README.md`、`images/` 和许可证随仓库一起保留。
+- 自动打包命名的 C# 源码和工程模板位于 `Source/DesktopPetAutomation/`，属于正式源码。无需保留或提交插件的 `Binaries/`、`Intermediate/`、`Build/`。
+- UE 编译时重新生成插件二进制和中间文件。编辑器启动或点击“自动设置项目”时，从正式源码重建项目 `Build/DesktopPet/DesktopPet.Automation.csproj`；原有旧路径也会自动迁移。此入口及项目 `Intermediate/DesktopPetAutomation/` 中的程序集都可重新生成。
+- 完整清理后，正常编译并打开项目再打包即可。命令行流水线清理项目 `Build/` 后，需要先启动一次编辑器或编辑器命令行程序，让 UAT 在启动前获得重建的入口。
+- 打包名称仍只配置 `PetApplicationName`：填写时生成对应入口 EXE 和进程显示名称，留空时使用原有 UE 默认命名规则。清理生成文件不会删除该设置。
+
 ## 代码职责与本次清理
 
 公开入口仍是 `ADesktopPetActor`，反射名称、已有参数引脚、分类和默认值保持兼容。按职责拆分实现文件，核心执行顺序保持原样；窗口/输入/渲染状态由一个运行实例统一持有，避免把项目角色或 UMG 类写死在插件里。
@@ -2674,7 +2683,7 @@ UMG 实现此函数。插件在 `PetCloseConfigWidget` 时调用它；返回 **t
 | `FDesktopPetShell` | 任务栏策略、托盘图标与系统消息 |
 | `FDesktopPetCursor` / CursorSurface | 项目光标获取、缓存与顶部合成 |
 | `FDesktopPetMemory` / FramePacing / Audio | 多实例共享的缓存、帧率、后台音量协调 |
-| DesktopPetEditor / Build Automation | 一键项目配置、设置入口、自定义打包名称；只在编辑器 / 打包阶段使用 |
+| DesktopPetEditor / Source/DesktopPetAutomation | 一键项目配置、设置入口、自定义打包名称；只在编辑器 / 打包阶段使用 |
 
 本次按要求删除：周期诊断报告与 PNG 导出、性能计数和耗时采样、测试命令行开关、普通 UE 视口的自动调试相机。保留创建窗口失败、存档失败等必要错误提示；不保留测试资产或测试脚本在插件内。
 
@@ -2684,4 +2693,4 @@ UMG 实现此函数。插件在 `PetCloseConfigWidget` 时调用它；返回 **t
 
 `bTransparentWindowEnabled=false` 仍可切换回普通 UE 游戏窗口，但不再生成调试相机，普通窗口由项目自己的相机控制。透明显示路径、原有着色器算法、窗口输入/穿透、运行时配置、持久化、菜单动画接口、音频与托盘功能均保留。
 
-格式约定保存在插件根目录 `.clang-format`。原有蓝图参数名为了资产兼容而保留；新增或重写的纯内部说明使用清楚的中文注释。本文描述基于当前源码，修改接口时应同步更新该手册。
+`.clang-format` 是可选的代码格式配置，不参与编译和运行。原有蓝图参数名为了资产兼容而保留；新增或重写的纯内部说明使用清楚的中文注释。本文描述基于当前源码，修改接口时应同步更新该手册。

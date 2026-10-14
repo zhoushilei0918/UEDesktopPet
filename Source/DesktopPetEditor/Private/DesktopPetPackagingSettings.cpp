@@ -16,19 +16,24 @@ void UDesktopPetPackagingSettings::EnsurePackagingAutomation()
     {
         return;
     }
-    // UE 源码版从项目 Build 发现自动化脚本；生成链接到插件实现的薄入口。
+    // 源码和模板随 Source 分发；项目 Build 下只生成可删除、可重建的 UAT 入口。
     // 不改项目渲染、Target.cs、业务代码或其他插件开关，用户无需指定输出 EXE。
     const FString Directory = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("Build/DesktopPet"));
     const FString File = Directory / TEXT("DesktopPet.Automation.csproj");
-    FString Content;
-    if (!FFileHelper::LoadFileToString(
-            Content, *(Plugin->GetBaseDir() / TEXT("Build/Automation/DesktopPet.Automation.csproj.template"))))
+    const FString AutomationDirectory = Plugin->GetBaseDir() / TEXT("Source/DesktopPetAutomation");
+    FString Source = FPaths::ConvertRelativePathToFull(AutomationDirectory / TEXT("DesktopPet.Automation.cs"));
+    if (!IFileManager::Get().FileExists(*Source))
     {
-        UE_LOG(LogTemp, Error, TEXT("DesktopPet: 自动打包名称模板缺失，请完整安装插件的 Build 目录。"));
+        UE_LOG(LogTemp, Error, TEXT("DesktopPet: 自动打包命名源码缺失，请完整安装插件的 Source/DesktopPetAutomation 目录。"));
         return;
     }
-    FString Source =
-        FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir() / TEXT("Build/Automation/DesktopPet.Automation.cs"));
+    FString Content;
+    if (!FFileHelper::LoadFileToString(
+            Content, *(AutomationDirectory / TEXT("DesktopPet.Automation.csproj.template"))))
+    {
+        UE_LOG(LogTemp, Error, TEXT("DesktopPet: 自动打包名称模板缺失，请完整安装插件的 Source/DesktopPetAutomation 目录。"));
+        return;
+    }
     const FString Engine = FPaths::ConvertRelativePathToFull(FPaths::EngineDir());
     if (FPaths::IsUnderDirectory(Source, Engine))
     {
