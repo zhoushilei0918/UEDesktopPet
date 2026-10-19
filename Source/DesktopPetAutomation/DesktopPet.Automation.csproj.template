@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- DesktopPet 自动生成的 UAT 接入；引擎目录由 UAT 注入，不保存机器或工程绝对路径。 -->
+  <!-- DesktopPet 自动生成的 UAT 接入；打包时由 UAT 注入引擎目录，IDE 从 UE 生成的同名 .props 读取。 -->
+  <Import Project="$(MSBuildProjectFullPath).props" Condition="'$(EngineDir)' == '' and Exists('$(MSBuildProjectFullPath).props')" />
   <Import Project="$(EngineDir)/Source/Programs/Shared/UnrealEngine.csproj.props" />
   <PropertyGroup>
     <OutputType>Library</OutputType>

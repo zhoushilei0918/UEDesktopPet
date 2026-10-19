@@ -554,6 +554,14 @@ public:
 
     /* 人物交互查询 */
 
+    /**
+     * 返回本 Actor 屏幕投影位置指向桌面鼠标的二维向量，不归一化、不限制在窗口内。
+     * 单位为实际屏幕像素，X 向右、Y 向下；起点是本 Actor 的世界位置，不是窗口中心。
+     * bOutValid - 窗口和相机投影是否有效；无效时返回零向量。请在游戏线程调用。
+     */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
+    FVector2D PetGetActorToMouseScreenVector(bool& bOutValid) const;
+
     /** 当前悬停的白名单 Actor；空白或 UI 上返回 None。 */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
     AActor* PetGetHoveredActor() const;

@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：165 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：166 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -118,7 +118,7 @@
 - **DesktopPet Utility / Window / Limits**（5 项）：[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
 - **DesktopPet Utility / Input**（6 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
-- **DesktopPet Utility / Interaction**（3 项）：[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
+- **DesktopPet Utility / Interaction**（4 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
 - **DesktopPet Utility / UI**（4 项）：[PetGetConfigWidget](#petgetconfigwidget)、[PetIsConfigWidgetOpen](#petisconfigwidgetopen)、[PetGetInteractionProgress](#petgetinteractionprogress)、[PetGetOverlayWidget](#petgetoverlaywidget)。
 - **DesktopPet Utility / Orbit**（3 项）：[PetGetOrbitCenter](#petgetorbitcenter)、[PetGetOrbitDistance](#petgetorbitdistance)、[PetGetOrbitFocusActor](#petgetorbitfocusactor)。
 - **DesktopPet Utility / Tray**（1 项）：[PetIsHiddenToTray](#petishiddentotray)。
@@ -1934,6 +1934,32 @@ bool PetIsZooming() const;
 
 
 ## DesktopPet Utility / Interaction
+
+### PetGetActorToMouseScreenVector
+
+**纯函数** · `DesktopPet Utility / Interaction`
+
+从当前 Pet Actor 的世界位置投影到桌宠画面，返回该投影位置指向桌面鼠标的二维像素向量。
+
+```cpp
+FVector2D PetGetActorToMouseScreenVector(bool& bOutValid) const;
+```
+
+**引脚 / 类型：** Target：当前 DesktopPetActor；输出 `Return Value`：`Vector2D`；输出 `Out Valid`：`bool`。
+
+**使用：** 从 PetRef 拖出该节点，先检查 Out Valid，再对返回值 Split Struct Pin / Break Vector2D。X 正值表示鼠标在右侧，Y 正值表示鼠标在下方。返回值不归一化、不钳制，保留实际像素距离；鼠标在桌宠外、透明区域、UI 上或窗口失去焦点时也可读取。
+
+- 使用该 PetActor 的 Capture，相机环绕后会重新投影；包含透视、正交和自定义投影矩阵。
+- 使用 HWND 当前客户区尺寸和物理像素坐标，适配拖动、缩放和多屏 DPI；超采样不会把返回值放大。
+- 起点是 **PetActor 自身的 Actor Location**，不会自动改为人物头骨、OrbitFocusActor 或窗口中心。如果 PetActor 只是相机宿主，它的原点可能并不位于人物头部。
+- 窗口尚未启动、已停止、收进托盘，或起点处于透视相机后方/相机平面上等投影失败时：返回 `(0, 0)`，Out Valid 为 false。有效的 `(0, 0)` 则表示鼠标正好位于投影位置。
+- 这是游戏线程的即时查询，不增加 Tick、渲染、碰撞检测或 GPU 回读。动画蓝图需要使用时，可由角色/宿主蓝图读取后传入动画参数。
+
+```text
+PetRef → Pet Get Actor To Mouse Screen Vector
+           ├─ Out Valid → Branch
+           └─ Return Value → Break Vector2D → 项目自己的限幅 / 平滑 / 转头参数
+```
 
 ### PetGetHoveredActor
 

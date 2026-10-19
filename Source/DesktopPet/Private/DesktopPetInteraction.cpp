@@ -3,6 +3,75 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "SceneView.h"
+
+/** 仅在蓝图查询时计算，不捕获画面，也不改变鼠标命中或窗口状态。 */
+FVector2D ADesktopPetActor::PetGetActorToMouseScreenVector(bool& bOutValid) const
+{
+    bOutValid = false;
+    if (!Runtime || !IsValid(Capture) || Runtime->Shell.IsInTray())
+    {
+        return FVector2D::ZeroVector;
+    }
+
+    // 鼠标和原生窗口都使用物理像素，避免系统缩放、多屏 DPI 或平滑缩放造成偏移。
+    FPetDpiScope DpiScope;
+    POINT MousePosition{};
+    RECT ClientRect{};
+    if (!GetCursorPos(&MousePosition) || !ScreenToClient(Runtime->Window, &MousePosition) ||
+        !GetClientRect(Runtime->Window, &ClientRect))
+    {
+        return FVector2D::ZeroVector;
+    }
+    const FIntPoint DisplaySize(ClientRect.right - ClientRect.left, ClientRect.bottom - ClientRect.top);
+    const FIntPoint CanvasSize = PetGetRuntimeConfig().WindowSize;
+    if (DisplaySize.X <= 0 || DisplaySize.Y <= 0 || CanvasSize.X <= 0 || CanvasSize.Y <= 0)
+    {
+        return FVector2D::ZeroVector;
+    }
+
+    FMinimalViewInfo ViewInfo;
+    Capture->GetCameraView(0.f, ViewInfo);
+    TOptional<FMatrix> CustomProjection;
+    if (Capture->bUseCustomProjectionMatrix)
+    {
+        CustomProjection = Capture->CustomProjectionMatrix;
+    }
+    else
+    {
+        // 与 ViewExtension 的取景修正一致；RenderTarget 的超采样和整数取整不改变逻辑宽高比。
+        ViewInfo.AspectRatio = float(CanvasSize.X) / CanvasSize.Y;
+        // SceneCapture 的正交渲染使用原始 OrthoWidth，Overscan 仅参与透视 FOV。
+        ViewInfo.OrthoWidth = Capture->OrthoWidth;
+    }
+    FMatrix ViewMatrix, ProjectionMatrix, ViewProjectionMatrix;
+    UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(
+        ViewInfo, CustomProjection, ViewMatrix, ProjectionMatrix, ViewProjectionMatrix);
+    const FVector WorldPosition = GetActorLocation();
+    if (WorldPosition.ContainsNaN() || ViewProjectionMatrix.ContainsNaN())
+    {
+        return FVector2D::ZeroVector;
+    }
+    const FVector4 ClipPosition = ViewProjectionMatrix.TransformFVector4(FVector4(WorldPosition, 1.));
+    if (!FMath::IsFinite(ClipPosition.W) || ClipPosition.W <= UE_DOUBLE_SMALL_NUMBER)
+    {
+        return FVector2D::ZeroVector;
+    }
+
+    FVector2D ActorPixel;
+    if (!FSceneView::ProjectWorldToScreen(
+            WorldPosition, FIntRect(FIntPoint::ZeroValue, DisplaySize), ViewProjectionMatrix, ActorPixel))
+    {
+        return FVector2D::ZeroVector;
+    }
+    const FVector2D Result = FVector2D(MousePosition.x, MousePosition.y) - ActorPixel;
+    if (Result.ContainsNaN())
+    {
+        return FVector2D::ZeroVector;
+    }
+    bOutValid = true;
+    return Result;
+}
 
 /** 查询与原生悬停使用同一条 UI 优先、Alpha、相机反投影和 Actor 白名单路径。 */
 AActor* ADesktopPetActor::PetGetInteractionActorAtPixel(FVector2D Position) const
