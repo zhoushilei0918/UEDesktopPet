@@ -554,13 +554,37 @@ public:
 
     /* 人物交互查询 */
 
+    /** 鼠标投影查询的基准点，同时确定三维求交平面的深度；使用绝对世界坐标，零值表示世界原点。 */
+    UPROPERTY(EditAnywhere,
+              BlueprintReadWrite,
+              Category = "DesktopPet|Interaction",
+              meta = (DisplayName = "鼠标屏幕向量基准点（世界坐标）"))
+    FVector PetMouseScreenVectorOrigin = FVector::ZeroVector;
+
     /**
-     * 返回本 Actor 屏幕投影位置指向桌面鼠标的二维向量，不归一化、不限制在窗口内。
-     * 单位为实际屏幕像素，X 向右、Y 向下；起点是本 Actor 的世界位置，不是窗口中心。
+     * 返回 PetMouseScreenVectorOrigin 屏幕投影位置指向桌面鼠标的二维向量，不归一化、不限制在窗口内。
+     * 单位为实际屏幕像素，X 向右、Y 向下；基准点可在本 Actor 的面板中填写绝对世界坐标。
      * bOutValid - 窗口和相机投影是否有效；无效时返回零向量。请在游戏线程调用。
      */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
     FVector2D PetGetActorToMouseScreenVector(bool& bOutValid) const;
+
+    /**
+     * 返回鼠标在相机朝向平面上的交点世界坐标，平面经过 PetMouseScreenVectorOrigin。
+     * 返回绝对世界位置，默认单位为厘米；不归一化，不依赖碰撞，不限制鼠标在窗口内。
+     * bOutValid - 是否得到有效交点；失败返回零向量。请在游戏线程调用。
+     */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
+    FVector PetGetMouseWorldPositionOnPlane(bool& bOutValid) const;
+
+    /**
+     * 返回基准点屏幕投影到鼠标的直线距离，占桌宠所在显示器对角线长度的比例，结果限制在 0～1。
+     * 距离为屏幕对角线一半时返回 0.5；达到或超过对角线长度时返回 1。
+     * 基准点使用 PetMouseScreenVectorOrigin；分母为窗口占比最大的显示器完整对角线，不随鼠标跨屏切换。
+     * bOutValid 为 false 时返回 0。窗口、相机或屏幕信息无效时不参与判断；请在游戏线程调用。
+     */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
+    double PetGetActorToMouseScreenDistanceRatio(bool& bOutValid) const;
 
     /** 当前悬停的白名单 Actor；空白或 UI 上返回 None。 */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
