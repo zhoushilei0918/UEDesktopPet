@@ -328,6 +328,14 @@ public:
 
     /* 窗体、缩放与尺寸限制 */
 
+    /** 主动请求已有桌宠窗口的前台和键盘焦点；在 PetStartDesktopWindow 后调用。未显示、在托盘或系统拒绝时返回 false，不自动启动/恢复托盘，不转发 UMG 或 Enhanced Input 键盘事件。 */
+    UFUNCTION(BlueprintCallable, Category = "DesktopPet|Window", meta = (Keywords = "Focus Activate 焦点 激活"))
+    bool PetRequestFocus();
+
+    /** 查询桌宠原生窗口是否同时拥有前台和键盘焦点；不表示 UMG 控件或玩家输入已获得焦点。 */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Window", meta = (Keywords = "Focus 焦点"))
+    bool PetHasFocus() const;
+
     /** 修改 Windows 窗口捕获许可；排除效果取决于操作系统及软件所用捕获接口。 */
     UFUNCTION(BlueprintCallable, Category = "DesktopPet|Window")
     void PetSetAllowScreenCapture(bool bAllow);

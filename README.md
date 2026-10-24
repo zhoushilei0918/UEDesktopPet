@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：169 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：171 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -54,6 +54,16 @@
 ![手动初始化桌宠](images/01-start.svg)
 
 先准备名单与镜头，再 Start。自动启动已开启时，可以只做准备，让父类在蓝图 BeginPlay 返回后启动；不要把“已运行时 Start 返回 false”误判成窗口丢失。
+
+### 主动获取窗口焦点
+
+在 Pet Actor 蓝图中连接：`Event BeginPlay → PetStartDesktopWindow → PetRequestFocus → Branch(Return Value)`。两个节点的 Target 都是当前 Pet Actor。
+
+`bAutoStart` 的自动创建发生在蓝图 BeginPlay 返回之后，因此不要只在 BeginPlay 直接请求焦点：先显式 Start，或者等待自动启动完成后再调用。已有窗口时 Start 返回 false，但仍可调用 Request Focus；不要仅用 Start 的返回值截断执行链。
+
+从托盘恢复时连接 `PetRestoreFromTray → PetRequestFocus`。默认启动、自动托盘恢复、拖拽和穿透行为保持原样；没有连接新节点就不会主动抢焦点。无需每 Tick 调用，也不要持续重试抢回用户已切走的焦点。
+
+这是原生 HWND 的前台与键盘焦点入口。当前插件的离屏 UMG 和项目 Enhanced Input 不会因此自动收到键盘/字符事件；该接口不更改输入路由，也不替输入框选择焦点。
 
 ### 设置范围并保存
 
@@ -112,8 +122,8 @@
 - **DesktopPet Utility / Lifecycle**（1 项）：[PetIsDesktopWindowRunning](#petisdesktopwindowrunning)。
 - **DesktopPet Utility / Persistence**（1 项）：[PetGetSavedConfigPath](#petgetsavedconfigpath)。
 - **DesktopPet Utility / Configuration**（18 项）：[PetGetAdditiveAlphaStrength](#petgetadditivealphastrength)、[PetGetAlwaysOnTop](#petgetalwaysontop)、[PetGetCaptureTranslucency](#petgetcapturetranslucency)、[PetGetClickThroughTransparentPixels](#petgetclickthroughtransparentpixels)、[PetGetDefaultRuntimeConfig](#petgetdefaultruntimeconfig)、[PetGetDisplayScale](#petgetdisplayscale)、[PetGetDraggable](#petgetdraggable)、[PetGetExitApplicationOnClose](#petgetexitapplicationonclose)、[PetGetExposure](#petgetexposure)、[PetGetHideGameWindow](#petgethidegamewindow)、[PetGetHitAlphaThreshold](#petgethitalphathreshold)、[PetGetMenuAnimationSeconds](#petgetmenuanimationseconds)、[PetGetMenuCloseDelay](#petgetmenuclosedelay)、[PetGetPreserveAdditiveEffects](#petgetpreserveadditiveeffects)、[PetGetRuntimeConfig](#petgetruntimeconfig)、[PetGetSupersampleScale](#petgetsupersamplescale)、[PetGetTargetFrameRate](#petgettargetframerate)、[PetGetWindowSize](#petgetwindowsize)。
-- **DesktopPet / Window**（11 项）：[PetSetAllowScreenCapture](#petsetallowscreencapture)、[PetSetAlwaysOnTop](#petsetalwaysontop)、[PetSetCenterAnchoredScaling](#petsetcenteranchoredscaling)、[PetSetDisplayScale](#petsetdisplayscale)、[PetSetDisplaySize](#petsetdisplaysize)、[PetSetHideGameWindow](#petsethidegamewindow)、[PetSetShowInTaskbar](#petsetshowintaskbar)、[PetSetTransparentWindowEnabled](#petsettransparentwindowenabled)、[PetSetWindowMode](#petsetwindowmode)、[PetSetWindowPosition](#petsetwindowposition)、[PetSetWindowSize](#petsetwindowsize)。
-- **DesktopPet Utility / Window**（7 项）：[PetGetAllowScreenCapture](#petgetallowscreencapture)、[PetGetCenterAnchoredScaling](#petgetcenteranchoredscaling)、[PetGetDisplaySize](#petgetdisplaysize)、[PetGetShowInTaskbar](#petgetshowintaskbar)、[PetGetTransparentWindowEnabled](#petgettransparentwindowenabled)、[PetGetWindowMode](#petgetwindowmode)、[PetGetWindowPosition](#petgetwindowposition)。
+- **DesktopPet / Window**（12 项）：[PetRequestFocus](#petrequestfocus)、[PetSetAllowScreenCapture](#petsetallowscreencapture)、[PetSetAlwaysOnTop](#petsetalwaysontop)、[PetSetCenterAnchoredScaling](#petsetcenteranchoredscaling)、[PetSetDisplayScale](#petsetdisplayscale)、[PetSetDisplaySize](#petsetdisplaysize)、[PetSetHideGameWindow](#petsethidegamewindow)、[PetSetShowInTaskbar](#petsetshowintaskbar)、[PetSetTransparentWindowEnabled](#petsettransparentwindowenabled)、[PetSetWindowMode](#petsetwindowmode)、[PetSetWindowPosition](#petsetwindowposition)、[PetSetWindowSize](#petsetwindowsize)。
+- **DesktopPet Utility / Window**（8 项）：[PetHasFocus](#pethasfocus)、[PetGetAllowScreenCapture](#petgetallowscreencapture)、[PetGetCenterAnchoredScaling](#petgetcenteranchoredscaling)、[PetGetDisplaySize](#petgetdisplaysize)、[PetGetShowInTaskbar](#petgetshowintaskbar)、[PetGetTransparentWindowEnabled](#petgettransparentwindowenabled)、[PetGetWindowMode](#petgetwindowmode)、[PetGetWindowPosition](#petgetwindowposition)。
 - **DesktopPet / Window / Limits**（6 项）：[PetSetDisplayScaleLimits](#petsetdisplayscalelimits)、[PetSetMaxDisplayScale](#petsetmaxdisplayscale)、[PetSetMaxWindowSize](#petsetmaxwindowsize)、[PetSetMinDisplayScale](#petsetmindisplayscale)、[PetSetMinWindowSize](#petsetminwindowsize)、[PetSetWindowSizeLimits](#petsetwindowsizelimits)。
 - **DesktopPet Utility / Window / Limits**（5 项）：[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
@@ -1301,6 +1311,22 @@ FIntPoint PetGetWindowSize() const;
 
 
 ## DesktopPet / Window
+
+### PetRequestFocus
+
+```cpp
+bool PetRequestFocus();
+```
+
+**分类：** `DesktopPet|Window`，BlueprintCallable。主动请求已有桌宠窗口成为前台窗口并取得原生键盘焦点，普通最小化窗口会恢复。成功时返回 true。未启动、透明窗口关闭、托盘隐藏、窗口不可见/被禁用、非窗口线程或 Windows 拒绝前台激活时返回 false。不会自动启动窗口、恢复托盘、改变置顶/穿透、转发键盘事件或设置 UMG 控件焦点。
+
+### PetHasFocus
+
+```cpp
+bool PetHasFocus() const;
+```
+
+**分类：** `DesktopPet Utility|Window`，BlueprintPure。仅查询当前桌宠原生窗口是否同时具有前台与键盘焦点；隐藏、最小化、关闭或停止时返回 false。返回值描述调用时的状态，用户随后仍可正常切换到其他应用。
 
 ### PetSetAllowScreenCapture
 

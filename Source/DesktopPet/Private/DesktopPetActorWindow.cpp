@@ -55,6 +55,62 @@ void* ADesktopPetActor::GetNativeWindowHandle() const
     return Runtime ? Runtime->Window : nullptr;
 }
 
+/** 显式请求一次原生焦点；不更改启动、托盘、置顶、穿透或项目输入策略。 */
+bool ADesktopPetActor::PetRequestFocus()
+{
+    if (!IsInGameThread())
+    {
+        return false;
+    }
+    // 激活消息可能同步进入窗口回调，保留运行时并在消息之后检查归属。
+    const auto Current = Runtime;
+    if (!Current || !Current->IsActive() || !Current->Config.bTransparentWindowEnabled || Current->Shell.IsInTray())
+    {
+        return false;
+    }
+    const HWND PetWindow = Current->Window;
+    if (!IsWindow(PetWindow) || !IsWindowVisible(PetWindow) || !IsWindowEnabled(PetWindow) ||
+        GetWindowThreadProcessId(PetWindow, nullptr) != GetCurrentThreadId())
+    {
+        return false;
+    }
+    if (IsIconic(PetWindow))
+    {
+        ShowWindow(PetWindow, SW_RESTORE);
+    }
+    if (!Current->IsActive())
+    {
+        return false;
+    }
+    if (GetForegroundWindow() != PetWindow)
+    {
+        SetForegroundWindow(PetWindow);
+    }
+    if (!Current->IsActive() || GetForegroundWindow() != PetWindow)
+    {
+        return false;
+    }
+    ::SetFocus(PetWindow);
+    // SetFocus 返回的是旧焦点；以实际状态判断成功，避免把旧焦点为空当成失败。
+    return Current->IsActive() && PetHasFocus();
+}
+
+bool ADesktopPetActor::PetHasFocus() const
+{
+    if (!IsInGameThread())
+    {
+        return false;
+    }
+    const auto Current = Runtime;
+    if (!Current || !Current->IsActive() || !Current->Config.bTransparentWindowEnabled || Current->Shell.IsInTray())
+    {
+        return false;
+    }
+    const HWND PetWindow = Current->Window;
+    return IsWindow(PetWindow) && IsWindowVisible(PetWindow) && IsWindowEnabled(PetWindow) && !IsIconic(PetWindow) &&
+           GetForegroundWindow() == PetWindow && ::GetFocus() == PetWindow;
+}
+
 /** 运行时更新 WindowSize；保留其他实例参数。 */
 void ADesktopPetActor::PetSetWindowSize(FIntPoint Value)
 {
