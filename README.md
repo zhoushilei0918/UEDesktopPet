@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：166 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：169 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -118,7 +118,8 @@
 - **DesktopPet Utility / Window / Limits**（5 项）：[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
 - **DesktopPet Utility / Input**（6 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
-- **DesktopPet Utility / Interaction**（4 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
+- **DesktopPet / Interaction**（1 项）：[PetMouseScreenVectorOrigin](#petmousescreenvectororigin)。
+- **DesktopPet Utility / Interaction**（6 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetMouseWorldPositionOnPlane](#petgetmouseworldpositiononplane)、[PetGetActorToMouseScreenDistanceRatio](#petgetactortomousescreendistanceratio)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
 - **DesktopPet Utility / UI**（4 项）：[PetGetConfigWidget](#petgetconfigwidget)、[PetIsConfigWidgetOpen](#petisconfigwidgetopen)、[PetGetInteractionProgress](#petgetinteractionprogress)、[PetGetOverlayWidget](#petgetoverlaywidget)。
 - **DesktopPet Utility / Orbit**（3 项）：[PetGetOrbitCenter](#petgetorbitcenter)、[PetGetOrbitDistance](#petgetorbitdistance)、[PetGetOrbitFocusActor](#petgetorbitfocusactor)。
 - **DesktopPet Utility / Tray**（1 项）：[PetIsHiddenToTray](#petishiddentotray)。
@@ -1933,13 +1934,27 @@ bool PetIsZooming() const;
 **使用：** 从 PetRef 读取 bool，并接 Branch 或控件状态；这是当前状态查询，不触发操作。
 
 
+## DesktopPet / Interaction
+
+### PetMouseScreenVectorOrigin
+
+**可编辑属性** · `DesktopPet / Interaction` · `Vector` · 默认 `(0, 0, 0)`
+
+面板显示名为 **鼠标屏幕向量基准点（世界坐标）**。选中关卡中的 PetActor，或打开其蓝图 Class Defaults，在 `DesktopPet / Interaction` 下填写 X、Y、Z。
+
+这里填写的是绝对世界位置，`(0, 0, 0)` 就是世界原点，不叠加 PetActor 的位置、旋转或缩放。可通过蓝图对此属性 Get / Set；设置后下次查询立即生效，无需重启桌宠。
+
+用于跟随头部时，可将头部 Socket 的 World Location 写入该属性；读取二维像素偏移用 `Pet Get Actor To Mouse Screen Vector`，读取平面交点的三维世界坐标用 `Pet Get Mouse World Position On Plane`。如需原先以 PetActor 自身位置为起点的效果，将 `Get Actor Location` 写入此属性即可。
+
+该属性随关卡实例或蓝图默认值保存，不属于 `PetSaveRuntimeConfig` 的通用窗口配置；运行时动态修改不会自动写入配置档。
+
 ## DesktopPet Utility / Interaction
 
 ### PetGetActorToMouseScreenVector
 
 **纯函数** · `DesktopPet Utility / Interaction`
 
-从当前 Pet Actor 的世界位置投影到桌宠画面，返回该投影位置指向桌面鼠标的二维像素向量。
+将 `PetMouseScreenVectorOrigin` 指定的世界位置投影到桌宠画面，返回该投影位置指向桌面鼠标的二维像素向量。节点名称和引脚保持不变。
 
 ```cpp
 FVector2D PetGetActorToMouseScreenVector(bool& bOutValid) const;
@@ -1951,15 +1966,86 @@ FVector2D PetGetActorToMouseScreenVector(bool& bOutValid) const;
 
 - 使用该 PetActor 的 Capture，相机环绕后会重新投影；包含透视、正交和自定义投影矩阵。
 - 使用 HWND 当前客户区尺寸和物理像素坐标，适配拖动、缩放和多屏 DPI；超采样不会把返回值放大。
-- 起点是 **PetActor 自身的 Actor Location**，不会自动改为人物头骨、OrbitFocusActor 或窗口中心。如果 PetActor 只是相机宿主，它的原点可能并不位于人物头部。
+- 起点来自 **鼠标屏幕向量基准点（世界坐标）** 属性，默认是世界原点。返回值仍是屏幕像素偏移，不是场景中的世界 X/Y 坐标。移动 PetActor 不会自动修改这个基准点；相机移动时会按实际相机重新投影。
 - 窗口尚未启动、已停止、收进托盘，或起点处于透视相机后方/相机平面上等投影失败时：返回 `(0, 0)`，Out Valid 为 false。有效的 `(0, 0)` 则表示鼠标正好位于投影位置。
 - 这是游戏线程的即时查询，不增加 Tick、渲染、碰撞检测或 GPU 回读。动画蓝图需要使用时，可由角色/宿主蓝图读取后传入动画参数。
 
 ```text
+面板填写基准点，或蓝图 Set PetMouseScreenVectorOrigin（例如头部 Socket 世界位置）
 PetRef → Pet Get Actor To Mouse Screen Vector
            ├─ Out Valid → Branch
            └─ Return Value → Break Vector2D → 项目自己的限幅 / 平滑 / 转头参数
 ```
+
+### PetGetMouseWorldPositionOnPlane
+
+**纯函数** · `DesktopPet Utility / Interaction`
+
+返回鼠标在虚拟平面上的交点绝对世界坐标。平面经过 `PetMouseScreenVectorOrigin`，法线为当前 Capture 相机的前向，因此始终正对桌宠相机；基准点提供深度，无需额外输入距离。
+
+```cpp
+FVector PetGetMouseWorldPositionOnPlane(bool& bOutValid) const;
+```
+
+**引脚 / 类型：** Target：当前 DesktopPetActor；输出 `Return Value`：`Vector`；输出 `Out Valid`：`bool`。
+
+**使用：** 在面板填写“鼠标屏幕向量基准点（世界坐标）”，或在运行时用头部 Socket 的 World Location 更新该属性。调用节点后检查 `Out Valid`，将返回值接到 `Find Look at Rotation` 的 Target / Look At 的世界位置输入，Start 使用头部的世界位置；姿态限幅和平滑由项目控制。
+
+- 返回的是绝对世界位置 X/Y/Z，默认单位为厘米；不归一化。需要从基准点指向鼠标的三维偏移时，使用 `Return Value - PetMouseScreenVectorOrigin`。
+- 这是虚拟平面的交点，不是角色皮肤或场景物体表面的碰撞命中点。平面上的基准点横向移动而深度不变时，交点不变。
+- 鼠标在窗口外、透明区域、UI 上或窗口失去焦点时仍可计算，结果不会钳制到窗口边缘。
+- 使用 Capture 的透视、正交或可逆自定义投影，适配窗口缩放、逻辑画布宽高比与 DPI；计算不依赖主游戏视口或 RenderTarget 超采样倍率。
+- 使用双精度相机相对坐标求交；实际精度仍受鼠标物理像素、相机参数和浮点表示限制，不对 TAA/TSR 的逐帧抖动或自定义后处理画面变形做反向补偿。
+- 窗口未启动/已停止/收进托盘、输入不是有限数、投影奇异、无法稳定求得唯一交点，或基准平面位于透视相机后方/相机所在平面时，返回 `(0,0,0)` 且 `Out Valid=false`。世界原点也可能是有效交点，因此必须以 `Out Valid` 判断成功与否。
+- 不依赖碰撞，不增加 Tick、渲染或 GPU 回读；在游戏线程读取后传给动画蓝图。
+
+```text
+头部 Get Socket Location（World）→ Set PetMouseScreenVectorOrigin
+PetRef → Pet Get Mouse World Position On Plane
+           ├─ Out Valid → Branch
+           └─ Return Value → Find Look at Rotation.Target
+头部 World Location ─────────→ Find Look at Rotation.Start
+```
+
+### PetGetActorToMouseScreenDistanceRatio
+
+**纯函数** · `DesktopPet Utility / Interaction` · 蓝图节点：`Pet Get Actor To Mouse Screen Distance Ratio`
+
+直接返回基准点到鼠标的屏幕距离比例，无需输入半径或先自行计算向量长度：
+
+**距离比例 = Clamp（基准点屏幕投影到鼠标的直线像素距离 ÷ 桌宠所在显示器的对角线像素长度，0，1）。**
+
+屏幕对角线长度为 `sqrt(屏幕宽度² + 屏幕高度²)`。
+
+```cpp
+double PetGetActorToMouseScreenDistanceRatio(bool& bOutValid) const;
+```
+
+- **Target**：当前桌宠 Actor（PetRef）。基准点仍使用其 `PetMouseScreenVectorOrigin` 绝对世界位置，与原来的 Screen Vector 节点完全一致；可填头部 Socket 的世界位置。
+- **Return Value**：范围 `0～1`、无单位的双精度距离比例。例如 `0.25` 表示距离为参考屏幕对角线的 25%，`0.5` 表示一半；达到或超过对角线长度时均返回 `1`。不是鼠标的绝对位置，也不是像素、世界单位、单位方向或百分数 `25`。
+- **Out Valid**：窗口、相机投影和显示器信息均有效时为 true。窗口未创建/已关闭、收进托盘或投影无效等情况返回 `0 / false`；鼠标恰好位于基准点则返回 `0 / true`。必须先检查 Valid，避免把失败的 0 当成处于范围内。
+- 鼠标可在透明区域、窗口外或其他显示器上。跨屏仍先计算真实距离，再将比例限制到 `0～1`；返回 `1` 后不再区分更远的距离。
+- **多屏基准**：选择与桌宠窗口相交面积最大的显示器，窗口完全离屏时选最近显示器。鼠标跨屏不会改变分母，桌宠移到另一块屏幕时会按新屏幕尺寸计算。副屏位于主屏左侧/上方、坐标为负时也使用同一套桌面像素坐标计算。
+- 分母取该显示器完整矩形的对角线，包含任务栏区域；不是整个多屏桌面的包围矩形。横纵距离除以同一个长度，响应范围保持圆形。不同宽高比下保证的是“占对角线比例一致”，不是占屏幕面积比例一致。
+- Windows DPI 缩放、距离查询和屏幕尺寸统一采用物理像素，不额外乘 DPI、桌宠缩放或超采样倍率。窗口缩放仍可能改变基准点投影位置，从而改变到鼠标的实际距离。
+- 应在游戏线程查询。动画蓝图中使用普通 `Event Blueprint Update Animation`，不要放在线程安全更新图。
+
+| 参考显示器 | 像素距离 | 返回比例 |
+| --- | --- | --- |
+| 1920×1080 | 对角线的 1/4，约 550.73 | 0.25 |
+| 3840×2160 | 对角线的 1/4，约 1101.45 | 0.25 |
+| 1080×1920（竖屏） | 对角线的一半，约 1101.45 | 0.5 |
+| 1920×1080，鼠标跨屏 | 3000（超过对角线约 2202.91） | 1.0 |
+
+```text
+PetRef → Pet Get Actor To Mouse Screen Distance Ratio
+           ├─ Return Value → <= 0.3 ──┐
+           └─ Out Valid ───────────── AND → 鼠标位于有效范围
+```
+
+在已有动画蓝图中，可以用这条判断替换 `Screen Vector → Vector2D Length → <= 固定像素半径`；最终还需与角色朝向角、目标偏角和世界平面投影结果合并。比较值是比例：原先 1080P 的 `350` 像素对应 `350 / sqrt(1920² + 1080²) ≈ 0.158881`，不要直接与 `350` 比较。
+
+显示器选择遵循 Windows 的 [MonitorFromWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-monitorfromwindow) 规则。此前“输入比例换算半径”的节点已移除；若蓝图曾放置该旧节点，请删除后改用本节点。
 
 ### PetGetHoveredActor
 
