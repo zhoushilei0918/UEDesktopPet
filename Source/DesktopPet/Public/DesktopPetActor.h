@@ -850,7 +850,7 @@ public:
 
     /* 光标显示 */
 
-    /** 运行时选择 UMG 光标是否与桌宠窗口统一合成；不修改项目光标资产，下一 Tick 生效。 */
+    /** 运行时选择 UMG 光标是否使用支持越界特效的独立透明图层；不修改项目光标资产，下一 Tick 生效。 */
     UFUNCTION(BlueprintCallable, Category = "DesktopPet|Cursor")
     void PetSetCompositeSoftwareCursorEnabled(bool bEnabled);
 

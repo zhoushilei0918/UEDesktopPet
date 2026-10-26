@@ -1,4 +1,6 @@
 #include "DesktopPetCursor.h"
+#include "DesktopPetCursorLayout.h"
+#include "DesktopPetCursorOverlay.h"
 
 #include "Engine/GameViewportClient.h"
 #include "Engine/UserInterfaceSettings.h"
@@ -22,6 +24,7 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
@@ -30,6 +33,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogDesktopPetCursor, Log, All);
 
 namespace
 {
+    TAutoConsoleVariable<float> CVarPetCursorOverflowPadding(
+        TEXT("DesktopPet.CursorOverflowPadding"), 64.f,
+        TEXT("Extra pixels around measured cursor widget bounds for custom OnPaint effects (0-1024)."));
     /** WM_SETCURSOR 和 Slate PostTick 的线程 DPI 上下文可能不同，原生判定始终用物理坐标。 */
     struct FPetCursorDpiScope
     {
@@ -244,6 +250,7 @@ namespace
         FRHIGPUTextureReadback GPU{TEXT("DesktopPetCursor")};
         TAtomic<bool> Submitted{false}, Copying{false}, Complete{false};
         FIntPoint Size = FIntPoint::ZeroValue;
+        FIntPoint HotSpot = FIntPoint::ZeroValue;
         uint64 Generation = 0;
         TArray<FColor> Pixels;
     };
@@ -267,11 +274,15 @@ struct FDesktopPetCursor::FState
     HCURSOR Selected = LoadCursor(nullptr, IDC_ARROW), Software = nullptr;
     TMap<EMouseCursor::Type, FHardwareEntry> Hardware;
     TSharedPtr<SWidget> Widget;
+    TSharedPtr<SVirtualWindow> RenderWindow;
+    FSlateRect RetainedBounds;
+    FDesktopPetCursorOverlay Overlay;
     TUniquePtr<FWidgetRenderer> Renderer;
     TStrongObjectPtr<UTextureRenderTarget2D> Target;
     TSharedPtr<FPetCursorReadback, ESPMode::ThreadSafe> Pending, Reusable;
     TArray<FColor> LastPixels;
     FIntPoint LastSize = FIntPoint::ZeroValue;
+    FIntPoint LastHotSpot = FIntPoint::ZeroValue;
     uint64 Generation = 0;
     double LastRender = 0.;
 
@@ -327,7 +338,9 @@ struct FDesktopPetCursor::FState
         {
             return;
         }
+        RenderWindow.Reset();
         Widget = NewWidget;
+        RetainedBounds = FSlateRect();
         ++Generation;
         LastRender = 0.;
         // Default、Hand 等类型即使使用同一 UMG 类，也可能是不同 Slate 实例。
@@ -348,6 +361,7 @@ struct FDesktopPetCursor::FState
         }
         LastPixels.Reset();
         LastSize = FIntPoint::ZeroValue;
+        LastHotSpot = FIntPoint::ZeroValue;
         ++PixelRevision;
     }
 
@@ -358,7 +372,8 @@ struct FDesktopPetCursor::FState
         {
             return;
         }
-        HCURSOR Replacement = PetCursorFromPixels(LastPixels, LastSize, FVector2D(.5, .5));
+        HCURSOR Replacement = PetCursorFromPixels(
+            LastPixels, LastSize, FVector2D(double(LastHotSpot.X) / LastSize.X, double(LastHotSpot.Y) / LastSize.Y));
         if (!Replacement)
         {
             return; // 创建失败仍保留有效旧句柄，下次更新重试。
@@ -389,7 +404,8 @@ struct FDesktopPetCursor::FState
             {
                 if (Pending->Generation == Generation && Widget && Pending->Pixels.Num() > 0)
                 {
-                    const bool Changed = LastSize != Pending->Size || LastPixels.Num() != Pending->Pixels.Num() ||
+                    const bool Changed = LastSize != Pending->Size || LastHotSpot != Pending->HotSpot ||
+                                         LastPixels.Num() != Pending->Pixels.Num() ||
                                          FMemory::Memcmp(LastPixels.GetData(),
                                                          Pending->Pixels.GetData(),
                                                          Pending->Pixels.Num() * sizeof(FColor)) != 0;
@@ -398,6 +414,7 @@ struct FDesktopPetCursor::FState
                         // 两种显示方式共用同一份 Slate 像素；统一合成时无需反复创建 Win32 光标句柄。
                         LastPixels = Pending->Pixels;
                         LastSize = Pending->Size;
+                        LastHotSpot = Pending->HotSpot;
                         ++PixelRevision;
                     }
                 }
@@ -438,20 +455,26 @@ struct FDesktopPetCursor::FState
         {
             return;
         }
-        // UMG 指定的尺寸就是最终屏幕像素：32×32 始终输出 32×32。
+        // UMG 内容仍按屏幕像素绘制；扩展透明画布不会缩放正常尺寸的光标。
         // 光标不再叠乘显示器 DPI、Slate 应用缩放或桌宠缩放；两种光标显示路径共用此尺寸。
         constexpr float Scale = 1.f;
         Widget->SlatePrepass(Scale);
         const FVector2D Desired = Widget->GetDesiredSize();
-        // 零尺寸 UMG 回退到硬件光标；异常超大光标按比例限制资源，不改变桌宠显示尺寸。
+        // 零尺寸 UMG 回退到硬件光标；保持原始布局，另行测量 RenderTransform 后的子控件范围。
         if (!FMath::IsFinite(Desired.X) || !FMath::IsFinite(Desired.Y) || Desired.X <= 0 || Desired.Y <= 0)
         {
             ClearSoftwarePixels();
             return;
         }
-        const float DrawScale = FMath::Min(Scale, 1024.f / float(FMath::Max(Desired.X, Desired.Y)));
-        const FIntPoint Size(FMath::Max(1, FMath::CeilToInt(Desired.X * DrawScale)),
-                             FMath::Max(1, FMath::CeilToInt(Desired.Y * DrawScale)));
+        if (!RenderWindow)
+        {
+            RenderWindow = SNew(SVirtualWindow).Size(Desired);
+        }
+        const TSharedPtr<SWidget> OldParent = Widget->GetParentWidget();
+        RenderWindow->SetContent(Widget.ToSharedRef());
+        const auto Layout = DesktopPetCursorLayout::Measure(
+            RenderWindow.ToSharedRef(), Desired, CVarPetCursorOverflowPadding.GetValueOnGameThread(), RetainedBounds);
+        const FIntPoint Size = Layout.Size;
         if (!Renderer)
         {
             Renderer = MakeUnique<FWidgetRenderer>(true, true);
@@ -468,7 +491,13 @@ struct FDesktopPetCursor::FState
         }
         const float Delta = LastRender > 0 ? float(Now - LastRender) : 0.f;
         LastRender = Now;
-        Renderer->DrawWidget(Target.Get(), Widget.ToSharedRef(), DrawScale, FVector2D(Size), Delta, false);
+        Renderer->DrawWindow(Target.Get(), RenderWindow->GetHittestGrid(), RenderWindow.ToSharedRef(),
+                             Layout.Geometry, Layout.ClipRect, Delta, false);
+        // 与 FWidgetRenderer::DrawWidget 一样，不接管项目光标 Widget 原有的父级。
+        if (OldParent)
+        {
+            Widget->AssignParentWidget(OldParent);
+        }
         Pending = Reusable ? Reusable : MakeShared<FPetCursorReadback, ESPMode::ThreadSafe>();
         Reusable.Reset();
         Pending->Submitted.Store(false);
@@ -476,6 +505,7 @@ struct FDesktopPetCursor::FState
         Pending->Complete.Store(false);
         Pending->Generation = Generation;
         Pending->Size = Size;
+        Pending->HotSpot = Layout.HotSpot;
         const auto Frame = Pending;
         auto* Resource = Target->GameThread_GetRenderTargetResource();
         ENQUEUE_RENDER_COMMAND(PetCursorCopy)(
@@ -569,7 +599,7 @@ void FDesktopPetCursor::Update(
     {
         if (State->CompositeSoftware)
         {
-            State->Selected = nullptr; // 由原窗口绘制，移除同位置的原生小光标。
+            State->Selected = nullptr; // 由无输入光标图层绘制，移除同位置的原生小光标。
         }
         else
         {
@@ -592,32 +622,55 @@ void FDesktopPetCursor::Update(
 void FDesktopPetCursor::SetCompositeSoftwareCursor(bool bEnabled)
 {
     State->CompositeSoftware = bEnabled;
+    if (!bEnabled)
+    {
+        State->Overlay.Hide();
+    }
 }
 
 bool FDesktopPetCursor::GetCompositeFrame(FDesktopPetCursorFrame& Out) const
 {
     Out = {};
-    if (!State->CompositeSoftware || !State->Owned || !State->Widget || State->LastPixels.IsEmpty() ||
+    // 独立图层已呈现整张光标时，主窗口不重复混合；图层创建失败仍保留原合成路径作为回退。
+    if (State->Overlay.IsVisible() || !State->CompositeSoftware || !State->Owned || !State->Widget || State->LastPixels.IsEmpty() ||
         !PetOwnsCursor(State->Window))
     {
         return false;
     }
     Out.Pixels = &State->LastPixels;
     Out.Size = State->LastSize;
-    Out.HotSpot = FIntPoint(FMath::Clamp(FMath::RoundToInt(Out.Size.X * .5f), 0, Out.Size.X - 1),
-                            FMath::Clamp(FMath::RoundToInt(Out.Size.Y * .5f), 0, Out.Size.Y - 1));
+    Out.HotSpot = State->LastHotSpot;
     Out.Revision = State->PixelRevision;
     return true;
 }
 
 bool FDesktopPetCursor::Apply(HWND Window)
 {
+    FPetCursorDpiScope DpiScope;
     if (!PetOwnsCursor(Window))
     {
+        State->Overlay.Hide();
         return false;
     }
     State->Owned = true;
     State->Window = Window;
+    if (State->CompositeSoftware && State->Widget && !State->LastPixels.IsEmpty())
+    {
+        POINT Mouse{};
+        if (GetCursorPos(&Mouse))
+        {
+            State->Overlay.Present(Window, State->LastPixels, State->LastSize,
+                                   State->LastHotSpot, State->PixelRevision, Mouse);
+        }
+        else
+        {
+            State->Overlay.Hide();
+        }
+    }
+    else
+    {
+        State->Overlay.Hide();
+    }
     SetCursor(State->Selected);
     return true;
 }
@@ -668,6 +721,7 @@ void FDesktopPetCursor::TickAnimations()
 void FDesktopPetCursor::Release()
 {
     FPetCursorDpiScope DpiScope;
+    State->Overlay.Hide();
     if (!State->Owned)
     {
         return;

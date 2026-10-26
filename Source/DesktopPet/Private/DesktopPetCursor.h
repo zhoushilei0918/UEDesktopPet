@@ -16,7 +16,7 @@ struct FDesktopPetCursorFrame
     uint64 Revision = 0;
 };
 
-/** 仅接管桌宠 HWND 下的光标；不改系统光标、不改 Slate 全局光标映射。 */
+/** 仅接管桌宠 HWND 下的光标；独立无输入图层保留越界绘制，不改 Slate 全局光标映射。 */
 class FDesktopPetCursor
 {
 public:
@@ -34,7 +34,7 @@ public:
     void Update(HWND Window, UWorld* World, const FWidgetPath& Path, const FPointerEvent& Event, int32 FrameRate);
     /** 切换 UMG 光标输出；原生硬件光标不受此设置影响。 */
     void SetCompositeSoftwareCursor(bool bEnabled);
-    /** 只有鼠标实际属于本窗口且 UMG 像素就绪时，才提供窗口最上层合成数据。 */
+    /** 独立图层不可用时提供主窗口合成回退；正常情况由独立图层完整显示光标。 */
     bool GetCompositeFrame(FDesktopPetCursorFrame& Out) const;
     /** 响应 WM_SETCURSOR，只使用已经准备好的资源，不在窗口消息中加载资产。 */
     bool Apply(HWND Window);

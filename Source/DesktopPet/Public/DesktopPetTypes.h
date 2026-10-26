@@ -62,7 +62,7 @@ struct DESKTOPPET_API FDesktopPetConfig
                       UIMax = "1",
                       EditCondition = "bAllowBackgroundAudio"))
     float BackgroundVolumeMultiplier = 1.f;
-    /** 在桌宠原窗口最上层显示项目 UMG 光标，避免原生光标显示路径的色差；关闭可恢复 Windows 原生显示。硬件 CUR/ANI 仍使用原生路径。 */
+    /** 使用独立无输入透明图层完整显示项目 UMG 光标及越界特效，保持 Slate 色彩与热点；关闭可恢复 Windows 原生显示。硬件 CUR/ANI 仍使用原生路径。 */
     UPROPERTY(EditAnywhere,
               BlueprintReadWrite,
               Category = "DesktopPet|Cursor",

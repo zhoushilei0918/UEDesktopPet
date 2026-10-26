@@ -2634,7 +2634,7 @@ float PetGetSharpness() const;
 
 **执行函数** · `DesktopPet / Cursor`
 
-运行时选择 UMG 光标是否与桌宠窗口统一合成；不修改项目光标资产，下一 Tick 生效。
+运行时选择 UMG 光标是否使用支持越界特效的独立透明图层；不修改项目光标资产，下一 Tick 生效。
 
 ```cpp
 void PetSetCompositeSoftwareCursorEnabled(bool bEnabled);
@@ -2644,6 +2644,16 @@ void PetSetCompositeSoftwareCursorEnabled(bool bEnabled);
 
 **使用：** 只选择项目 UMG 光标的显示路径，不改贴图、尺寸或 Alpha。硬件 CUR/ANI 保持原生路径。
 
+
+### Cursor Widget 偏移与跟随特效
+
+启用 `bCompositeSoftwareCursor`（原“光标与窗口统一合成”开关，默认开启）时，插件按 Cursor Widget 可见子控件的布局和 Render Transform 自动扩大绘制范围，包含正负平移、缩放、旋转及 Culling Bounds Extension。原始 Widget 的布局尺寸和中心热点保持不变，增加透明边缘不会重新居中光标。可以继续在 Widget 内移动图像，让箭头尖端对准原始画布中心。
+
+软件光标由独立的、完全穿透鼠标且不能激活的透明图层显示，特效可越过桌宠窗口边缘，不会扩大人物命中区域、改变窗口大小或抢走键盘焦点。该图层沿用桌宠的置顶和屏幕捕获许可；鼠标离开桌宠接管范围、进入穿透区域、隐藏到托盘或停止桌宠时立即隐藏。硬件 CUR/ANI 保持原生路径。
+
+动态效果的绘制范围可增长，收缩时复用已分配空间，避免逐像素重建纹理。普通控件/材质效果按自身几何范围计算；自行在 `OnPaint` 中画到几何之外的内容，可增加控制台变量 `DesktopPet.CursorOverflowPadding`（默认每侧 64 像素，范围 0～1024），或为自定义 Slate 控件声明 Culling Bounds Extension。控件显式设置的 `Clip to Bounds`、遮罩及 Retainer 内部裁剪仍生效，需在 Widget 设计中按需要调整。
+
+正常尺寸保持 1:1 屏幕像素；完整绘制范围超过 4096 像素时整体等比缩小以限制内存，不截掉某一边。物理显示器之外无法显示。若操作系统无法创建/更新独立图层，则回退原主窗口合成路径。
 
 ## DesktopPet Utility / Cursor
 
@@ -2691,7 +2701,7 @@ void PetDispatchAction(FName Action);
 | `TrayFrameRate` | `int32` | `5` | 整数 1～30 Hz | 全部桌宠收进托盘后的引擎 Tick 上限；桌宠捕获完全停止，项目游戏逻辑按此频率继续运行。 |
 | `bAllowBackgroundAudio` | `bool` | `true` | 枚举 / 开关 | 关闭时失去焦点后静音；开启时使用后台音量倍率。影响同进程全部声音，不暂停播放进度。 |
 | `BackgroundVolumeMultiplier` | `float` | `1.f` | 0～1 | 后台音量相对正常音量的比例：0 为静音、1 为保持原音量；多个桌宠实例取最高有效倍率。 |
-| `bCompositeSoftwareCursor` | `bool` | `true` | 枚举 / 开关 | 在桌宠原窗口最上层显示项目 UMG 光标，避免原生光标显示路径的色差；关闭可恢复 Windows 原生显示。硬件 CUR/ANI 仍使用原生路径。 |
+| `bCompositeSoftwareCursor` | `bool` | `true` | 枚举 / 开关 | 使用独立无输入透明图层完整显示项目 UMG 光标及越界特效，保持 Slate 色彩与热点；关闭可恢复 Windows 原生显示。硬件 CUR/ANI 仍使用原生路径。 |
 | `bTransparentWindowEnabled` | `bool` | `true` | 枚举 / 开关 | 关闭时隐藏桌宠窗口并恢复普通 UE 游戏窗口；普通窗口使用项目自己的相机。 |
 | `bCenterAnchoredScaling` | `bool` | `true` | 枚举 / 开关 | 直接设置尺寸时保持窗口中心；滚轮和 PetZoomAtScreenPosition 始终以鼠标为中心。 |
 | `bEnableWheelZoom` | `bool` | `true` | 枚举 / 开关 | 在人物上滚动鼠标滚轮时自动缩放，无需增强输入。 |
