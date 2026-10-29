@@ -1,4 +1,5 @@
 #include "DesktopPetRuntime.h"
+#include "DesktopPetWidgetGeometry.h"
 
 /* 限频捕获、GPU 回读与像素合成；执行顺序保持在原有成员函数中。 */
 
@@ -169,17 +170,20 @@ void FDesktopPetRuntime::CaptureFrame(float Delta)
     Owner->Capture->CaptureScene();
     if (HasUI)
     {
+        FPetDpiScope DpiScope;
+        POINT Origin{};
+        if (ClientToScreen(Window, &Origin))
+        {
+            UIOrigin = FVector2D(Origin.x, Origin.y);
+        }
         UIHitSize = FIntPoint(Width, Height);
-    }
-    if (HasUI)
-    {
-        Renderer->DrawWindow(Owner->UITarget,
-                             VirtualWindow->GetHittestGrid(),
-                             VirtualWindow.ToSharedRef(),
-                             Config.DisplayScale,
-                             FVector2D(Width, Height),
-                             CaptureDelta,
-                             false);
+        DesktopPetWidgetGeometry::DrawWindow(*Renderer,
+                                             Owner->UITarget,
+                                             VirtualWindow.ToSharedRef(),
+                                             UIOrigin,
+                                             FVector2D(UIHitSize),
+                                             Config.DisplayScale,
+                                             CaptureDelta);
     }
     // 复用 staging 纹理及 CPU 数组，避免每帧分配数十 MB 的读回对象。
     TSharedPtr<FPetReadback, ESPMode::ThreadSafe> Frame;

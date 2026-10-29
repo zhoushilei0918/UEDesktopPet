@@ -143,7 +143,7 @@ public:
     void FinishDrag();
     /** 原生窗口消息统一转换为 Slate 事件和项目指针事件。 */
     static LRESULT CALLBACK WindowProc(HWND InWindow, UINT InMessage, WPARAM InWParam, LPARAM InLParam);
-    /** Slate 命中网格属于最近一次 UI 绘制；显示层缩放时将坐标映射回该网格。 */
+    /** 窗口内物理像素转换到最近一帧 UMG 的桌面绝对坐标；缩放时映射回该帧的命中网格。 */
     FVector2D ToUI(FVector2D P) const;
     /** 空白处、装饰 Widget 和真实可交互控件仍使用同一个命中路径。 */
     FWidgetPath UIPathAt(FVector2D Position) const;
@@ -234,6 +234,8 @@ private:
     // 两者在平滑缩放期间可以不同；GPU 完成新帧之前继续使用上一帧有效图像。
     FIntPoint DisplaySize = FIntPoint(600, 760), BitmapSize = FIntPoint::ZeroValue, CapturedSize = FIntPoint::ZeroValue,
               UIHitSize = FIntPoint(600, 760);
+    /** 与最近绘制的 UMG 几何、命中网格配套；不使用可能尚未回写的配置位置。 */
+    FVector2D UIOrigin = FVector2D::ZeroVector;
     float PresentedScale = 1.f, ZoomStartScale = 1.f, ZoomTargetScale = 1.f;
     bool Zooming = false, ZoomCommitPending = false, ZoomAnchorValid = false;
     double ZoomStarted = 0., LastZoomPresentation = 0.;

@@ -219,7 +219,7 @@ LRESULT CALLBACK FDesktopPetRuntime::WindowProc(HWND InWindow, UINT InMessage, W
 
 FVector2D FDesktopPetRuntime::ToUI(FVector2D P) const
 {
-    return FVector2D(P.X * UIHitSize.X / DisplaySize.X, P.Y * UIHitSize.Y / DisplaySize.Y);
+    return UIOrigin + FVector2D(P.X * UIHitSize.X / DisplaySize.X, P.Y * UIHitSize.Y / DisplaySize.Y);
 }
 
 FWidgetPath FDesktopPetRuntime::UIPathAt(FVector2D Position) const
