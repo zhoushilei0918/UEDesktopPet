@@ -91,6 +91,11 @@ LRESULT CALLBACK FDesktopPetRuntime::WindowProc(HWND InWindow, UINT InMessage, W
     {
         return 0;
     }
+    // 先更新查询快照，再执行现有交互；UI 右键、中键和侧键也能查询，但不增加捕获或事件路由。
+    if (Runtime->Config.bTransparentWindowEnabled)
+    {
+        Runtime->InputState.HandleMessage(InMessage, InWParam);
+    }
     // 移动统一由 PollInput 采样；提前覆盖移动坐标会丢失增强输入的位移增量。
     if ((InMessage == WM_LBUTTONDOWN || InMessage == WM_LBUTTONDBLCLK || InMessage == WM_LBUTTONUP ||
          InMessage == WM_RBUTTONDOWN || InMessage == WM_RBUTTONUP || InMessage == WM_MOUSEWHEEL))
@@ -386,6 +391,7 @@ void FDesktopPetRuntime::PointerUp()
 
 void FDesktopPetRuntime::ReleaseHeldInput()
 {
+    InputState.Reset();
     const bool Left = NativePressed.Contains(EKeys::LeftMouseButton) || UIPressed || Dragging;
     const bool Right = NativePressed.Contains(EKeys::RightMouseButton);
     NativePressed.Empty();
@@ -425,6 +431,7 @@ bool FDesktopPetRuntime::PassThroughBasePixel(FIntPoint Point) const
 void FDesktopPetRuntime::PollInput(float Delta)
 {
     FPetDpiScope DpiScope;
+    InputState.Refresh();
     if (!Config.bTransparentWindowEnabled)
     {
         NativeCursor.Release();

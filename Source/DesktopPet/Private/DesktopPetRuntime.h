@@ -1,6 +1,7 @@
 #pragma once
 #include "DesktopPetActor.h"
 #include "DesktopPetMemory.h"
+#include "DesktopPetInputState.h"
 #include "DesktopPetFramePacing.h"
 #include "DesktopPetShell.h"
 #include "DesktopPetCursor.h"
@@ -202,6 +203,8 @@ private:
     ADesktopPetActor* Owner = nullptr;
     HWND Window = nullptr;
     FDesktopPetShell Shell;
+    /** 查询状态与已有 Slate/拖拽按键集合分开，避免改变输入消费规则。 */
+    FDesktopPetInputState InputState;
     /** 项目 Cursor 只在桌宠实际接收鼠标的区域生效。 */
     FDesktopPetCursor NativeCursor;
     /** 光标只覆盖现有窗口的小矩形，最后绘制且不参与人物/UI 命中。 */

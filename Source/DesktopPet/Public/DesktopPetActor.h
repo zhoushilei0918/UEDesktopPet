@@ -547,6 +547,16 @@ public:
         return PetGetRuntimeConfig().WheelZoomStep;
     }
 
+    /**
+     * 查询本桌宠指定按键是否按住，不依赖 PlayerController 或提前绑定事件。
+     * 鼠标支持左/右/中/两个侧键，需先在本桌宠窗口按下；键盘只在 PetHasFocus 为 true 时查询。
+     * 松开、交互取消、停止或隐藏后鼠标状态失效；不支持手柄、轴键、滚轮和 AnyKey。
+     * 不主动获取焦点，不转发输入到项目或其他窗口。仅在游戏线程调用。
+     */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Input",
+              meta = (DisplayName = "Pet Is Input Key Down", Keywords = "Mouse Keyboard Pressed 按键 鼠标 按住"))
+    bool PetIsInputKeyDown(FKey Key) const;
+
     /** 查询原生窗口是否处于拖拽状态。 */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Input")
     bool PetIsWindowDragging() const;

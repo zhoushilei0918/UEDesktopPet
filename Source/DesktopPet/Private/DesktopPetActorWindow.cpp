@@ -45,6 +45,27 @@ void ADesktopPetActor::PetEndWindowDrag()
     }
 }
 
+bool ADesktopPetActor::PetIsInputKeyDown(FKey Key) const
+{
+    if (!IsInGameThread())
+    {
+        return false;
+    }
+    const auto Current = Runtime;
+    if (!Current || !Current->IsActive() || !Current->Config.bTransparentWindowEnabled || Current->Shell.IsInTray() ||
+        !IsWindowVisible(Current->Window) || !IsWindowEnabled(Current->Window) || IsIconic(Current->Window))
+    {
+        return false;
+    }
+    const uint32 VirtualKey = FDesktopPetInputState::GetVirtualKey(Key);
+    if (VirtualKey == 0 || VirtualKey > 255)
+    {
+        return false;
+    }
+    const bool bPhysicallyDown = (GetAsyncKeyState(FDesktopPetInputState::GetPhysicalKey(VirtualKey)) & 0x8000) != 0;
+    return Current->InputState.IsKeyDown(VirtualKey, Key.IsMouseButton() ? false : PetHasFocus(), bPhysicallyDown);
+}
+
 bool ADesktopPetActor::PetIsWindowDragging() const
 {
     return Runtime && Runtime->Dragging;

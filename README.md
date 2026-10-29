@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：173 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：174 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -64,6 +64,12 @@
 从托盘恢复时连接 `PetRestoreFromTray → PetRequestFocus`。默认启动、自动托盘恢复、拖拽和穿透行为保持原样；没有连接新节点就不会主动抢焦点。无需每 Tick 调用，也不要持续重试抢回用户已切走的焦点。
 
 这是原生 HWND 的前台与键盘焦点入口。当前插件的离屏 UMG 和项目 Enhanced Input 不会因此自动收到键盘/字符事件；该接口不更改输入路由，也不替输入框选择焦点。
+
+### 直接查询指定按键是否按住
+
+在 WBP 中保存 `DesktopPetActor` 类型的 `PetActorReference`，从该引用拖出 **Pet Is Input Key Down**，将 `Key` 设为 **Right Mouse Button**，把 `Return Value` 接到 `Branch` 的 `Condition`。在需要判断的位置执行 Branch 即可；此节点为 Pure，不需要提前绑定按下/抬起事件，也不依赖 PlayerController。
+
+鼠标支持左键、右键、中键和两个侧键，需由这个桌宠窗口收到按下消息；键盘查询仅在该桌宠的 `PetHasFocus` 为 true 时生效。节点只读取调用时的状态，不申请焦点或额外鼠标捕获，也不向项目输入系统发送事件。完整范围和采样边界见 [PetIsInputKeyDown](#petisinputkeydown)。
 
 ### 设置范围并保存
 
@@ -127,7 +133,7 @@
 - **DesktopPet / Window / Limits**（6 项）：[PetSetDisplayScaleLimits](#petsetdisplayscalelimits)、[PetSetMaxDisplayScale](#petsetmaxdisplayscale)、[PetSetMaxWindowSize](#petsetmaxwindowsize)、[PetSetMinDisplayScale](#petsetmindisplayscale)、[PetSetMinWindowSize](#petsetminwindowsize)、[PetSetWindowSizeLimits](#petsetwindowsizelimits)。
 - **DesktopPet Utility / Window / Limits**（7 项）：[PetGetMinZoom](#petgetminzoom)、[PetGetMaxZoom](#petgetmaxzoom)、[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
-- **DesktopPet Utility / Input**（6 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
+- **DesktopPet Utility / Input**（7 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsInputKeyDown](#petisinputkeydown)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
 - **DesktopPet / Interaction**（1 项）：[PetMouseScreenVectorOrigin](#petmousescreenvectororigin)。
 - **DesktopPet Utility / Interaction**（6 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetMouseWorldPositionOnPlane](#petgetmouseworldpositiononplane)、[PetGetActorToMouseScreenDistanceRatio](#petgetactortomousescreendistanceratio)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
 - **DesktopPet Utility / UI**（4 项）：[PetGetConfigWidget](#petgetconfigwidget)、[PetIsConfigWidgetOpen](#petisconfigwidgetopen)、[PetGetInteractionProgress](#petgetinteractionprogress)、[PetGetOverlayWidget](#petgetoverlaywidget)。
@@ -1931,6 +1937,31 @@ float PetGetWheelZoomStep() const;
 
 **使用：** 从 PetRef 拖出此纯节点，将返回值连接到设置面板、比较或分支条件。配置类 Getter 包含待应用修改；实际生效通知见 PetRuntimeConfigApplied。
 
+### PetIsInputKeyDown
+
+**纯函数** · `DesktopPet Utility / Input` · 蓝图显示名：**Pet Is Input Key Down**
+
+查询指定按键当前是否按住，Target 为要查询的桌宠实例。
+
+```cpp
+bool PetIsInputKeyDown(FKey Key) const;
+```
+
+**引脚 / 类型：** Target：DesktopPetActor 对象引用；输入 `Key`：`FKey`；输出 `Return Value`：`bool`。
+
+**使用：** 在 WBP 中连接 `PetActorReference → Pet Is Input Key Down(Key = Right Mouse Button) → Branch.Condition`，将现有执行线接到 Branch。也可选择键盘上的具体按键。无需绑定鼠标或键盘事件；Pure 节点没有执行引脚，在读取返回值时查询状态。
+
+| 按键 / 窗口状态 | 返回规则 |
+| --- | --- |
+| Left / Right / Middle Mouse Button、Thumb Mouse Button、Thumb Mouse Button 2 | 本桌宠收到对应按下或双击消息后记录，且查询时该键仍实际按住才返回 true；不要求桌宠拥有键盘焦点。 |
+| 有 Windows 映射的键盘按键 | 仅在 `PetHasFocus()` 为 true 且指定键实际按住时返回 true。鼠标悬停、UMG 焦点或 PlayerController 焦点不能代替此原生窗口焦点。 |
+| AnyKey、轴键、手柄键、滚轮、无效或无法映射的键 | 返回 false；滚轮增量可从 `PetPointerInput` 的 Wheel 事件读取。 |
+| 尚未启动、已停止、收进托盘、窗口不可见/禁用/最小化、关闭透明桌宠显示 | 返回 false。此节点不查询普通 UE 游戏窗口。 |
+
+鼠标状态与现有 Slate、人物点击和拖拽状态分开保存；失焦、取消交互、捕获丢失、收起或停止时清空。查询不会主动获取焦点、增加鼠标捕获、启动拖拽，或向 Enhanced Input / PlayerController 注入输入。键盘按键无需从桌宠内开始按下，但离开桌宠焦点后不会返回 true。
+
+插件在收到鼠标抬起消息时移除记录，并在后续运行时采样中清理窗口外松开的按键。若在两次运行时采样之间于窗口外快速松开又重新按下，未收到抬起消息的旧记录可能延续；该查询不提供全局鼠标事件归属保证。运行时清理记录后，鼠标必须再次由这个桌宠收到按下消息才会返回 true。
+
 ### PetIsWindowDragging
 
 **纯函数** · `DesktopPet Utility / Input`
@@ -2853,6 +2884,7 @@ UMG 实现此函数。插件在 `PetCloseConfigWidget` 时调用它；返回 **t
 | `DesktopPetControls.cpp` | 常驻 UI、菜单生命周期、通用动作通知 |
 | `DesktopPetRuntimeLifecycle.cpp` | HWND / 渲染目标等实例资源生命周期 |
 | `DesktopPetRuntimeInput.cpp` | Windows 消息、Slate 命中、原始指针、拖拽与缩放 |
+| `DesktopPetInputState.h/.cpp` | 独立的鼠标按住记录、按键映射和只读状态判断 |
 | `DesktopPetRuntimeCapture.cpp` | 捕获提交、异步 GPU 回读与队列复用 |
 | `DesktopPetRuntimePresentation.cpp` | 合成结果提交、窗口像素与光标显示 |
 | `DesktopPetRuntimeWidget.cpp` | 项目 UMG 与离屏 Slate 窗口连接 |
