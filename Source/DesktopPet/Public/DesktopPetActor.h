@@ -382,6 +382,20 @@ public:
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Window|Limits")
     void PetGetEffectiveDisplayScaleLimits(float& Minimum, float& Maximum) const;
 
+    /** 获取当前实际可达到的最小 Zoom 倍率；同时考虑倍率配置和窗体尺寸限制，包含待应用的运行时修改。 */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Window|Limits", meta = (DisplayName = "Pet Get Min Zoom", Keywords = "Minimum Display Scale 缩放 最小"))
+    float PetGetMinZoom() const
+    {
+        return float(PetGetRuntimeConfig().GetEffectiveDisplayScaleRange().X);
+    }
+
+    /** 获取当前实际可达到的最大 Zoom 倍率；同时考虑倍率配置和窗体尺寸限制，包含待应用的运行时修改。 */
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Window|Limits", meta = (DisplayName = "Pet Get Max Zoom", Keywords = "Maximum Display Scale 缩放 最大"))
+    float PetGetMaxZoom() const
+    {
+        return float(PetGetRuntimeConfig().GetEffectiveDisplayScaleRange().Y);
+    }
+
     /** 切换 UE 游戏窗口隐藏与输入禁用；编辑器主窗口不受影响。 */
     UFUNCTION(BlueprintCallable, Category = "DesktopPet|Window")
     void PetSetHideGameWindow(bool Value);

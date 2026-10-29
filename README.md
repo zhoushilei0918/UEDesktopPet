@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：171 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：173 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -125,7 +125,7 @@
 - **DesktopPet / Window**（12 项）：[PetRequestFocus](#petrequestfocus)、[PetSetAllowScreenCapture](#petsetallowscreencapture)、[PetSetAlwaysOnTop](#petsetalwaysontop)、[PetSetCenterAnchoredScaling](#petsetcenteranchoredscaling)、[PetSetDisplayScale](#petsetdisplayscale)、[PetSetDisplaySize](#petsetdisplaysize)、[PetSetHideGameWindow](#petsethidegamewindow)、[PetSetShowInTaskbar](#petsetshowintaskbar)、[PetSetTransparentWindowEnabled](#petsettransparentwindowenabled)、[PetSetWindowMode](#petsetwindowmode)、[PetSetWindowPosition](#petsetwindowposition)、[PetSetWindowSize](#petsetwindowsize)。
 - **DesktopPet Utility / Window**（8 项）：[PetHasFocus](#pethasfocus)、[PetGetAllowScreenCapture](#petgetallowscreencapture)、[PetGetCenterAnchoredScaling](#petgetcenteranchoredscaling)、[PetGetDisplaySize](#petgetdisplaysize)、[PetGetShowInTaskbar](#petgetshowintaskbar)、[PetGetTransparentWindowEnabled](#petgettransparentwindowenabled)、[PetGetWindowMode](#petgetwindowmode)、[PetGetWindowPosition](#petgetwindowposition)。
 - **DesktopPet / Window / Limits**（6 项）：[PetSetDisplayScaleLimits](#petsetdisplayscalelimits)、[PetSetMaxDisplayScale](#petsetmaxdisplayscale)、[PetSetMaxWindowSize](#petsetmaxwindowsize)、[PetSetMinDisplayScale](#petsetmindisplayscale)、[PetSetMinWindowSize](#petsetminwindowsize)、[PetSetWindowSizeLimits](#petsetwindowsizelimits)。
-- **DesktopPet Utility / Window / Limits**（5 项）：[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
+- **DesktopPet Utility / Window / Limits**（7 项）：[PetGetMinZoom](#petgetminzoom)、[PetGetMaxZoom](#petgetmaxzoom)、[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
 - **DesktopPet Utility / Input**（6 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
 - **DesktopPet / Interaction**（1 项）：[PetMouseScreenVectorOrigin](#petmousescreenvectororigin)。
@@ -1686,6 +1686,34 @@ void PetGetEffectiveDisplayScaleLimits(float& Minimum, float& Maximum) const;
 **引脚 / 类型：** Target：DesktopPetActor 对象引用；输出 `Minimum`：`float&`；输出 `Maximum`：`float&`。
 
 **使用：** Minimum / Maximum 都是输出引脚。给倍率 Slider 设范围时优先使用它们，不直接拿配置中的 Min / Max 当最终可达范围。
+
+### PetGetMinZoom
+
+**纯函数** · `DesktopPet Utility / Window / Limits` · 蓝图节点：`Pet Get Min Zoom`
+
+获取当前实际可达到的最小缩放倍率，同时考虑 `MinDisplayScale`、`MaxDisplayScale`、逻辑画布和窗口尺寸限制。
+
+```cpp
+float PetGetMinZoom() const;
+```
+
+**引脚 / 类型：** Target：DesktopPetActor 对象引用；输出 `Return Value`：`float`。
+
+**使用：** 从 PetRef 拖出节点，连接到缩放滑条的最小值。未启动桌宠时也能查询；运行时修改配置后，下次查询立即包含待应用的修改。
+
+### PetGetMaxZoom
+
+**纯函数** · `DesktopPet Utility / Window / Limits` · 蓝图节点：`Pet Get Max Zoom`
+
+获取当前实际可达到的最大缩放倍率，与 `PetGetMinZoom` 共用现有尺寸约束计算，不改变缩放行为。
+
+```cpp
+float PetGetMaxZoom() const;
+```
+
+**引脚 / 类型：** Target：DesktopPetActor 对象引用；输出 `Return Value`：`float`。
+
+**使用：** 连接到缩放滑条的最大值；当前倍率仍使用 `PetGetDisplayScale`。例如逻辑画布 600×760、窗口范围 300×300～1000×1000、配置倍率 0.25～3 时，两个 Zoom 节点分别返回约 0.5 和 1.315789。需要配置中填写的上下限时，使用原有 `PetGetMinDisplayScale` / `PetGetMaxDisplayScale`。
 
 ### PetGetMaxDisplayScale
 
