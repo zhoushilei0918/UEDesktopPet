@@ -42,42 +42,27 @@ void DesktopPetCompositor::Composite(const TArray<FFloat16>& Opacity,
                         }
                         Sum *= Inv * Config.Exposure;
                         float A = FMath::Clamp(Coverage * Inv, 0.f, 1.f);
-                        // 无几何覆盖且无发光的背景必定输出全零，跳过无效的 sRGB 和预乘计算。
-                        // 只跳过严格为黑的背景，保留任何微弱的半透明或加法光效。
-                        if (A <= 0.00001f &&
-                            (!Config.bPreserveAdditiveEffects || (Sum.R == 0.f && Sum.G == 0.f && Sum.B == 0.f)))
+                        // 两种模式共用最终后处理颜色；不除小 Alpha，避免放大误差及逐通道失色。
+                        FColor Pixel = Sum.ToFColorSRGB();
+                        const int32 Peak = FMath::Max3(int32(Pixel.R), int32(Pixel.G), int32(Pixel.B));
+                        if (Config.bPreserveAdditiveEffects)
                         {
-                            const int32 I = Y * Width + X;
-                            SceneAlpha[I] = 0;
-                            Pet[I] = FColor(0, 0, 0, 0);
-                            continue;
+                            // 发光优先：补足 Windows 预乘 BGRA 所需的覆盖率。
+                            A = FMath::Max(A, FMath::Clamp(Peak / 255.f * Config.AdditiveAlphaStrength, 0.f, 1.f));
                         }
-                        FColor RGB = FColor::Black;
-                        if (A > 0.00001f)
+                        // 原始透明度模式直接使用捕获 Alpha，包括 0；亮度不会让背景被更多遮挡。
+                        Pixel.A = FMath::RoundToInt(A * 255);
+                        if (Peak > Pixel.A)
                         {
-                            RGB = (Sum / A).ToFColorSRGB();
-                        }
-                        else if (Config.bPreserveAdditiveEffects)
-                        {
-                            // Windows source-over 无法还原任意桌面上的真实加法混合，发光使用覆盖率近似。
-                            const FColor Glow = Sum.ToFColorSRGB();
-                            A = FMath::Clamp(
-                                FMath::Max3(Glow.R, Glow.G, Glow.B) / 255.f * Config.AdditiveAlphaStrength, 0.f, 1.f);
-                            if (A > 0.00001f)
-                            {
-                                RGB = FColor(FMath::Min(255, FMath::RoundToInt(Glow.R / A)),
-                                             FMath::Min(255, FMath::RoundToInt(Glow.G / A)),
-                                             FMath::Min(255, FMath::RoundToInt(Glow.B / A)),
-                                             255);
-                            }
+                            // 保持 Alpha 时的颜色上限，按同一比例减弱 RGB，保持编码后颜色的通道比例。
+                            const float Weight = float(Pixel.A) / Peak;
+                            Pixel.R = FMath::RoundToInt(Pixel.R * Weight);
+                            Pixel.G = FMath::RoundToInt(Pixel.G * Weight);
+                            Pixel.B = FMath::RoundToInt(Pixel.B * Weight);
                         }
                         const int32 I = Y * Width + X;
-                        const uint8 Alpha = FMath::RoundToInt(A * 255);
-                        SceneAlpha[I] = Alpha;
-                        Pet[I] = FColor(FMath::Min(int32(Alpha), FMath::RoundToInt(RGB.R * A)),
-                                        FMath::Min(int32(Alpha), FMath::RoundToInt(RGB.G * A)),
-                                        FMath::Min(int32(Alpha), FMath::RoundToInt(RGB.B * A)),
-                                        Alpha);
+                        SceneAlpha[I] = Pixel.A;
+                        Pet[I] = Pixel;
                     }
                 });
     // 没有锐化和 UI 时，第一遍已经给出最终像素，直接复制即可。

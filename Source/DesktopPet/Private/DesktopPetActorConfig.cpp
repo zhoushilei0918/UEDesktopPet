@@ -54,6 +54,13 @@ void ADesktopPetActor::PetApplyRuntimeConfig(const FDesktopPetConfig& Config)
     bConfigPending = true;
 }
 
+void ADesktopPetActor::PetSetAlphaMode(EDesktopPetAlphaMode Mode)
+{
+    auto C = PetGetRuntimeConfig();
+    C.bPreserveAdditiveEffects = Mode == EDesktopPetAlphaMode::PreserveGlow;
+    PetApplyRuntimeConfig(C);
+}
+
 /** 运行时更新 SupersampleScale；保留其他实例参数。 */
 void ADesktopPetActor::PetSetSupersampleScale(int32 Value)
 {

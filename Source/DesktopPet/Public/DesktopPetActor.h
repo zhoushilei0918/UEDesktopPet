@@ -293,7 +293,19 @@ public:
         return PetGetRuntimeConfig().MenuCloseDelay;
     }
 
-    /** 获取当前实例的加法覆盖率重建开关。 */
+    /** 切换后下一 Tick 应用；只修改 Alpha 处理方式，保留当前亮度、位置与缩放。 */
+    UFUNCTION(BlueprintCallable, Category = "DesktopPet Utility|Configuration",
+              meta = (DisplayName = "设置 Alpha 处理方式", Keywords = "Pet Set Alpha Mode Opacity Glow"))
+    void PetSetAlphaMode(EDesktopPetAlphaMode Mode);
+
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Configuration",
+              meta = (DisplayName = "获取 Alpha 处理方式", Keywords = "Pet Get Alpha Mode Opacity Glow"))
+    EDesktopPetAlphaMode PetGetAlphaMode() const
+    {
+        return PetGetPreserveAdditiveEffects() ? EDesktopPetAlphaMode::PreserveGlow : EDesktopPetAlphaMode::OriginalOpacity;
+    }
+
+    /** True 为优先保留发光，False 为保留原始透明度；保留旧节点名称以兼容已有蓝图。 */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Configuration")
     bool PetGetPreserveAdditiveEffects() const
     {

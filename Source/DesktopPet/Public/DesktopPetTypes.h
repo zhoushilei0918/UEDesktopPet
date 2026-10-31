@@ -16,6 +16,14 @@ enum class EDesktopPetWindowMode : uint8
     ToolWindow UMETA(DisplayName = "隐藏任务栏按钮")
 };
 
+/** 桌面窗口的两种 Alpha 处理方式；配置仍保存原布尔字段，兼容旧蓝图和存档。 */
+UENUM(BlueprintType)
+enum class EDesktopPetAlphaMode : uint8
+{
+    OriginalOpacity UMETA(DisplayName = "保留原始透明度"),
+    PreserveGlow UMETA(DisplayName = "优先保留发光颜色")
+};
+
 /** 一个桌宠实例的完整配置；可在蓝图中 Make / Set Members 后交给 PetApplyRuntimeConfig。 */
 USTRUCT(BlueprintType)
 struct DESKTOPPET_API FDesktopPetConfig
@@ -183,14 +191,16 @@ struct DESKTOPPET_API FDesktopPetConfig
     /** 是否捕获普通半透明材质与 Niagara 的半透明粒子。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Effects")
     bool bCaptureTranslucency = true;
-    /** 对有颜色但无 Alpha 的 Additive 像素重建覆盖率，避免发光粒子被丢弃。 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Effects")
+    /** 开启：优先保留发光颜色，必要时提高 Alpha。关闭：严格保留捕获的原始 Alpha，超出可显示范围的颜色等比减弱；无 Alpha 的光晕不显示。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Effects",
+              meta = (DisplayName = "Alpha：优先保留发光（关闭保留原始透明度）"))
     bool bPreserveAdditiveEffects = true;
-    /** Additive 覆盖率重建强度；Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
+    /** 只影响优先保留发光模式；原始透明度模式忽略此值。Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
     UPROPERTY(EditAnywhere,
               BlueprintReadWrite,
               Category = "DesktopPet|Effects",
-              meta = (ClampMin = "0.01", ClampMax = "4"))
+              meta = (DisplayName = "发光 Alpha 强度", ClampMin = "0.01", ClampMax = "4",
+                      EditCondition = "bPreserveAdditiveEffects"))
     float AdditiveAlphaStrength = 1.f;
     /** 小型桌宠缓存预算：只在隐藏主窗口的独立游戏中生效；PIE 和普通调试窗口保持项目原值。大型场景可关闭或增加容量。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesktopPet|Memory")

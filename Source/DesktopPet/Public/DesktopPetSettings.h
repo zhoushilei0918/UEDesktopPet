@@ -147,11 +147,13 @@ public:
     /** 是否捕获普通半透明材质与 Niagara 的半透明粒子。 */
     UPROPERTY(Config, EditAnywhere, Category = "Effects")
     bool bCaptureTranslucency = true;
-    /** 对有颜色但无 Alpha 的 Additive 像素重建覆盖率，避免发光粒子被丢弃。 */
-    UPROPERTY(Config, EditAnywhere, Category = "Effects")
+    /** 开启：优先保留发光颜色，必要时提高 Alpha。关闭：严格保留捕获的原始 Alpha，超出可显示范围的颜色等比减弱；无 Alpha 的光晕不显示。 */
+    UPROPERTY(Config, EditAnywhere, Category = "Effects",
+              meta = (DisplayName = "Alpha：优先保留发光（关闭保留原始透明度）"))
     bool bPreserveAdditiveEffects = true;
-    /** Additive 覆盖率重建强度；Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
-    UPROPERTY(Config, EditAnywhere, Category = "Effects", meta = (ClampMin = "0.01", ClampMax = "4"))
+    /** 只影响优先保留发光模式；原始透明度模式忽略此值。Windows 使用 source-over，不能完全复现对任意桌面的加法混合。 */
+    UPROPERTY(Config, EditAnywhere, Category = "Effects", meta = (DisplayName = "发光 Alpha 强度", ClampMin = "0.01", ClampMax = "4",
+                      EditCondition = "bPreserveAdditiveEffects"))
     float AdditiveAlphaStrength = 1.f;
     /** 可选的项目 Widget 类；为空时允许纯人物/纯特效运行，不创建任何默认菜单。 */
     UPROPERTY(Config, EditAnywhere, Category = "UI")

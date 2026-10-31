@@ -73,24 +73,21 @@ uint3 PetRound3(float3 Value)
     }
     Sum = Sum * ExposureScale;
     precise float A = saturate(Coverage * InverseSamples);
-    uint3 RGB = 0;
-    if (A > 0.00001)
+    // 与 CPU 一致：只在发光优先模式提高 Alpha；原始透明度模式保持捕获覆盖率。
+    uint3 RGB = PetSRGB3(Sum);
+    uint Peak = max(RGB.r, max(RGB.g, RGB.b));
+    if (PreserveAdditive)
     {
-        precise float Reciprocal = 1.0 / A;
-        RGB = PetSRGB3(Sum * Reciprocal);
-    }
-    else if (PreserveAdditive)
-    {
-        uint3 Glow = PetSRGB3(Sum);
-        precise float Strength = max(Glow.r, max(Glow.g, Glow.b)) / 255.0;
-        A = saturate(Strength * AdditiveStrength);
-        if (A > 0.00001)
-        {
-            RGB = min(255u, PetRound3(float3(Glow) / A));
-        }
+        precise float Strength = float(Peak) / 255.0;
+        A = max(A, saturate(Strength * AdditiveStrength));
     }
     uint Alpha = PetRound(A * 255.0);
-    PetOutput[Id.y * OutputSize.x + Id.x] = PetPack(uint4(min(Alpha, PetRound3(float3(RGB) * A)), Alpha));
+    if (Peak > Alpha)
+    {
+        precise float Weight = float(Alpha) / float(Peak);
+        RGB = PetRound3(float3(RGB) * Weight);
+    }
+    PetOutput[Id.y * OutputSize.x + Id.x] = PetPack(uint4(RGB, Alpha));
 }
 
     [numthreads(8, 8, 1)] void FinishCS(uint3 Id : SV_DispatchThreadID)
