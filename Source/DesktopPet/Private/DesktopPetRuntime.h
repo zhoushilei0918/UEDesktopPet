@@ -156,7 +156,11 @@ public:
     FPointerEvent Pointer(FKey Key = FKey()) const;
     /** 命中基于最终合成前的场景 Alpha，也适用于半透明模型及粒子。 */
     bool HitsScene() const;
-    /** 可见像素与组件包围盒联合拾取；可见名单自动获得交互权，不依赖查询碰撞。 */
+    /** Shared UI/alpha/physical-pixel gate; no change to coordinate conversion. */
+    bool CanPickScenePixel(FVector2D Position) const;
+    /** Original visible bounds picking used only to qualify window manipulation. */
+    AActor* PickWindowActor(FVector2D Position) const;
+    /** Event picking uses the Pet interaction trace channel when configured. */
     AActor* PickActor(FVector2D Position) const;
     /** 两种鼠标键统一判定；Actor 点击定义为按下，左键才参与默认窗口拖拽。 */
     void PointerDown(FKey Key = EKeys::LeftMouseButton);

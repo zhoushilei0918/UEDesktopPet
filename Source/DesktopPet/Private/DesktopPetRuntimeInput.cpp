@@ -267,28 +267,41 @@ bool FDesktopPetRuntime::HitsScene() const
            SceneAlpha.IsValidIndex(Y * DisplaySize.X + X) && SceneAlpha[Y * DisplaySize.X + X] >= Threshold;
 }
 
-AActor* FDesktopPetRuntime::PickActor(FVector2D Position) const
+bool FDesktopPetRuntime::CanPickScenePixel(FVector2D Position) const
 {
     if (Shell.IsInTray() || Owner->bConfigWidgetOpen || !Config.bTransparentWindowEnabled)
     {
-        return nullptr;
+        return false;
     }
     if (!FMath::IsFinite(Position.X) || !FMath::IsFinite(Position.Y))
     {
-        return nullptr;
+        return false;
     }
     const int32 X = FMath::FloorToInt(Position.X), Y = FMath::FloorToInt(Position.Y);
     if (X < 0 || Y < 0 || X >= DisplaySize.X || Y >= DisplaySize.Y || !SceneAlpha.IsValidIndex(Y * DisplaySize.X + X) ||
         SceneAlpha[Y * DisplaySize.X + X] < Threshold)
     {
-        return nullptr;
+        return false;
     }
     if (HitsUI(UIPathAt(Position)))
     {
-        return nullptr;
+        return false;
     }
+    return true;
+}
+
+AActor* FDesktopPetRuntime::PickActor(FVector2D Position) const
+{
+    if (!CanPickScenePixel(Position)) return nullptr;
     return Owner->TraceInteractionActor(
         FVector2D((Position.X + .5) / DisplaySize.X, (Position.Y + .5) / DisplaySize.Y));
+}
+
+AActor* FDesktopPetRuntime::PickWindowActor(FVector2D Position) const
+{
+    if (!CanPickScenePixel(Position)) return nullptr;
+    return Owner->TraceInteractionActor(
+        FVector2D((Position.X + .5) / DisplaySize.X, (Position.Y + .5) / DisplaySize.Y), true);
 }
 
 void FDesktopPetRuntime::PointerDown(FKey Key)
@@ -327,38 +340,39 @@ void FDesktopPetRuntime::PointerDown(FKey Key)
             SetCapture(Window);
         }
     }
-    else if (AActor* Actor = PickActor(Cursor))
+    else
     {
-        // 保持普通按键也需要捕获；是否进入自动窗口拖拽由 Draggable 配置决定。
+        AActor* Actor = PickActor(Cursor);
+        AActor* WindowActor = PickWindowActor(Cursor);
+        if (!Actor && !WindowActor) return;
+        // Event recipients and window manipulation are deliberately independent.
         NativePressed.Add(Key);
-        if (GetCapture() != Window)
-        {
-            SetCapture(Window);
-        }
+        if (GetCapture() != Window) SetCapture(Window);
         if (Key == EKeys::LeftMouseButton)
         {
-            Owner->PetActorLeftClicked.Broadcast(Actor);
-            Owner->PetEventActorLeftClicked(Actor);
-            if (!IsActive())
+            if (Actor)
             {
-                return;
+                Owner->PetActorLeftClicked.Broadcast(Actor);
+                Owner->PetEventActorLeftClicked(Actor);
+                if (!IsActive()) return;
+                if (IsValid(Actor) && Owner->PetGetInteractionActors().Contains(Actor))
+                    Owner->PetClicked.Broadcast();
             }
-            if (IsValid(Actor) && Owner->PetGetInteractionActors().Contains(Actor))
-            {
-                Owner->PetClicked.Broadcast();
-            }
-            if (IsActive() && IsValid(Actor) && Owner->PetGetInteractionActors().Contains(Actor) && Draggable &&
-                !Owner->bConfigWidgetOpen)
+            if (IsActive() && IsValid(WindowActor) && Draggable && !Owner->bConfigWidgetOpen &&
+                PickWindowActor(Cursor))
             {
                 BeginDrag();
             }
         }
         else if (Key == EKeys::RightMouseButton)
         {
-            Owner->PetActorRightClicked.Broadcast(Actor);
-            Owner->PetEventActorRightClicked(Actor);
-            if (IsActive() && !Shell.IsInTray() && !Owner->bConfigWidgetOpen && !Dragging &&
-                IsValid(Owner->OrbitFocusActor))
+            if (Actor)
+            {
+                Owner->PetActorRightClicked.Broadcast(Actor);
+                Owner->PetEventActorRightClicked(Actor);
+            }
+            if (IsActive() && IsValid(WindowActor) && !Shell.IsInTray() && !Owner->bConfigWidgetOpen &&
+                !Dragging && IsValid(Owner->OrbitFocusActor) && PickWindowActor(Cursor))
             {
                 OrbitDragging = true;
             }
@@ -471,6 +485,7 @@ void FDesktopPetRuntime::PollInput(float Delta)
         return;
     }
     const bool OnUI = HitsUI(Path), OnScene = Owner->PetGetHoveredActor() != nullptr;
+    const bool OnWindowScene = PickWindowActor(Cursor) != nullptr;
     if (OnScene && !Owner->bConfigWidgetOpen)
     {
         AActor* HoverActor = Owner->PetGetHoveredActor();
@@ -482,11 +497,11 @@ void FDesktopPetRuntime::PollInput(float Delta)
         return;
     }
     const double Now = FPlatformTime::Seconds();
-    if (OnUI || OnScene || UIPressed || Dragging)
+    if (OnUI || OnWindowScene || UIPressed || Dragging)
     {
         LastHover = Now;
     }
-    Hovered = OnScene;
+    Hovered = OnWindowScene;
     MenuOpen = Owner->bConfigWidgetOpen;
     OpenAmount = FMath::FInterpConstantTo(OpenAmount, MenuOpen ? 1.f : 0.f, Delta, 1.f / AnimationSeconds);
     Owner->PetInteractionProgress.Broadcast(FMath::SmoothStep(0.f, 1.f, OpenAmount), FVector2D(Config.WindowSize));
@@ -502,7 +517,7 @@ void FDesktopPetRuntime::PollInput(float Delta)
     }
     FSlateApplication::Get().RoutePointerMoveEvent(Path, Pointer(), false);
     const bool Transparent = PassThroughBasePixel(FIntPoint(P.x, P.y)) ||
-                             (ClickThrough && !Owner->bConfigWidgetOpen && !OnUI && !OnScene && !Dragging &&
+                             (ClickThrough && !Owner->bConfigWidgetOpen && !OnUI && !OnWindowScene && !Dragging &&
                               !OrbitDragging && !UIPressed && NativePressed.IsEmpty());
     if (Transparent != WasInputTransparent)
     {

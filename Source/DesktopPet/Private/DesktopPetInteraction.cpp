@@ -1,5 +1,6 @@
 #include "DesktopPetActor.h"
 #include "DesktopPetRuntime.h"
+#include "DesktopPetPicking.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -217,26 +218,25 @@ AActor* ADesktopPetActor::PetGetInteractionActorAtPixel(FVector2D Position) cons
     return Runtime ? Runtime->PickActor(Position) : nullptr;
 }
 
-/** 可见名单就是默认交互名单；不要求角色创建 Physics Asset 或配置碰撞通道。 */
+bool ADesktopPetActor::PetSetInteractionTraceChannel(FName ChannelName)
+{
+    ECollisionChannel Channel;
+    if (!ChannelName.IsNone() && !DesktopPetPicking::ResolveChannel(ChannelName, Channel)) return false;
+    InteractionTraceChannel = ChannelName;
+    // PollInput performs the hover transition at its normal safe point on the next tick.
+    return true;
+}
+
+/** Only event recipients use the configured collision channel. */
 TArray<AActor*> ADesktopPetActor::PetGetInteractionActors() const
 {
+    ECollisionChannel Channel;
+    if (!DesktopPetPicking::ResolveChannel(InteractionTraceChannel, Channel))
+        return DesktopPetPicking::GetVisibleActors(Capture);
+    TArray<UPrimitiveComponent*> Components;
+    DesktopPetPicking::GatherComponents(Capture, Channel, Components);
     TArray<AActor*> Result;
-    if (!Capture)
-    {
-        return Result;
-    }
-    for (const auto& Weak : Capture->ShowOnlyComponents)
-    {
-        UPrimitiveComponent* C = Weak.Get();
-        if (IsValid(C) && C->IsRegistered() && C->IsVisible() && !C->bHiddenInGame && !C->bHiddenInSceneCapture &&
-            !Cast<UShapeComponent>(C))
-        {
-            if (AActor* A = C->GetOwner(); IsValid(A) && !A->IsHidden())
-            {
-                Result.AddUnique(A);
-            }
-        }
-    }
+    for (UPrimitiveComponent* C : Components) Result.AddUnique(C->GetOwner());
     return Result;
 }
 AActor* ADesktopPetActor::PetGetHoveredActor() const
@@ -244,15 +244,17 @@ AActor* ADesktopPetActor::PetGetHoveredActor() const
     return HoveredInteractionActor.Get();
 }
 
-/** 先由最终透明覆盖率拒绝空白，再在可见组件包围盒中寻找最近对象。 多 Actor 重叠时这是自动包围盒拾取，并非逐三角形 ID 缓冲；不会修改组件碰撞。 */
-AActor* ADesktopPetActor::TraceInteractionActor(FVector2D UV) const
+/** Event picking uses query collision. Window controls retain the original visible bounds path. */
+AActor* ADesktopPetActor::TraceInteractionActor(FVector2D UV, bool bWindowControls) const
 {
-    const TArray<AActor*> Actors = PetGetInteractionActors();
+    const TArray<AActor*> Actors = DesktopPetPicking::GetVisibleActors(Capture);
+    ECollisionChannel Channel;
+    const bool bQueryCollision = !bWindowControls && DesktopPetPicking::ResolveChannel(InteractionTraceChannel, Channel);
     if (Actors.IsEmpty() || !GetWorld())
     {
         return nullptr;
     }
-    if (Actors.Num() == 1)
+    if (!bQueryCollision && Actors.Num() == 1)
     {
         return Actors[0];
     }
@@ -268,6 +270,12 @@ AActor* ADesktopPetActor::TraceInteractionActor(FVector2D UV) const
         return nullptr;
     }
     const FVector End = Start + Direction * 10000000.f;
+    if (bQueryCollision)
+    {
+        TArray<UPrimitiveComponent*> Components;
+        DesktopPetPicking::GatherComponents(Capture, Channel, Components);
+        return DesktopPetPicking::TraceComponents(Components, Channel, Start, End);
+    }
     double Nearest = TNumericLimits<double>::Max();
     AActor* Hit = nullptr;
     for (const auto& Weak : Capture->ShowOnlyComponents)

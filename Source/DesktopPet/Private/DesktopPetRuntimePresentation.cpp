@@ -137,7 +137,7 @@ bool FDesktopPetRuntime::ZoomAtScreenPosition(float Delta, FVector2D Screen)
     RECT R{};
     GetWindowRect(Window, &R);
     const FVector2D Local = Screen - FVector2D(R.left, R.top);
-    if (!PickActor(Local) || CapturedPixels.IsEmpty())
+    if (!PickWindowActor(Local) || CapturedPixels.IsEmpty())
     {
         return false;
     }

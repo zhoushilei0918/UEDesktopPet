@@ -598,6 +598,21 @@ public:
 
     /* 人物交互查询 */
 
+    /** Mouse event trace channel name. None or an unavailable channel keeps legacy picking.
+     * This does not change dragging, orbiting, zooming or mouse coordinate conversion. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DesktopPet|Interaction",
+              meta = (DisplayName = "Interaction Trace Channel"))
+    FName InteractionTraceChannel = TEXT("PetInteract");
+
+    /** Select an existing trace channel by name; None restores legacy picking.
+     * Invalid names return false without changing the previous channel. */
+    UFUNCTION(BlueprintCallable, Category = "DesktopPet|Interaction")
+    bool PetSetInteractionTraceChannel(FName ChannelName);
+
+    UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
+    FName PetGetInteractionTraceChannel() const { return InteractionTraceChannel; }
+
+
     /** 鼠标投影查询的基准点，同时确定三维求交平面的深度；使用绝对世界坐标，零值表示世界原点。 */
     UPROPERTY(EditAnywhere,
               BlueprintReadWrite,
@@ -638,7 +653,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
     AActor* PetGetInteractionActorAtPixel(FVector2D PixelPosition) const;
 
-    /** 获取由可见名单推导的交互对象副本，不包含失效对象。 */
+    /** 获取可见对象中对交互通道 Block 且启用查询的对象；未配置通道时兼容旧名单。 */
     UFUNCTION(BlueprintPure, Category = "DesktopPet Utility|Interaction")
     TArray<AActor*> PetGetInteractionActors() const;
 
@@ -983,7 +998,7 @@ private:
     TWeakObjectPtr<AActor> HoveredInteractionActor;
     bool bStopping = false;
     /** 根据捕获相机和已显示组件包围盒自动拾取，不依赖碰撞或 Physics Asset。 */
-    AActor* TraceInteractionActor(FVector2D UV) const;
+    AActor* TraceInteractionActor(FVector2D UV, bool bWindowControls = false) const;
     /** 处理 A→B、Actor→UI 等状态迁移，保证先 Leave 再 Enter。 */
     void UpdateHoveredActor(AActor* Actor);
     /** 被悬停对象销毁时发出最后一次离开，防止悬停状态残留。 */

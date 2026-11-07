@@ -2,7 +2,7 @@
 
 适用于本次整理后的 UE 5.8 / Win64 插件源码。本文中的节点名、参数、默认值和分类来自公开头文件，并按实际实现补充调用时机和限制。
 
-**覆盖范围：174 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
+**覆盖范围：177 项 Pet Actor 蓝图成员（含函数、事件和属性）、40 个运行配置字段、9 个指针事件字段、2 个枚举、1 个菜单关闭接口。** 不包含 AActor 自身继承的 UE 通用节点。
 
 文档与 `images/` 一起提交到 GitHub 即可浏览；图为可放大的 SVG，无需安装插件、执行脚本或联网。节点连线是说明图，不能直接粘贴进 UE。
 
@@ -87,7 +87,9 @@
 
 ![人物点击与 Actor 引用](images/04-events.svg)
 
-点击定义为**按下**。拾取以最终场景 Alpha 和可见组件包围盒联合判断，不要求项目配置 Physics Asset；它不是三角形级射线拾取。装饰 UI 与交互 UI 的命中优先级由插件的 Slate 命中路径处理。
+点击定义为**按下**。Pet 的 `Interaction Trace Channel` 默认填写 `PetInteract`。项目存在该 Trace Channel 时，鼠标事件在最终场景 Alpha 和 UI 命中检查后，只查询可见 Actor 上开启 Query 且 Block 该通道的组件：静态网格使用复杂碰撞，胶囊等 Shape 使用简单碰撞；精确查询未命中不会退回包围盒。隐藏的胶囊可作为同一个可见 Actor 的交互代理，无需启用角色网格的物理模拟。装饰 UI 与交互 UI 的命中优先级由插件的 Slate 命中路径处理。
+
+该通道控制 MouseEnter、MouseLeave、MouseHover、左右键点击及指针事件的 HitActor；拖动窗口、右键旋转、滚轮/鼠标锚点缩放仍使用原有可见区域判定和坐标换算。没有配置该通道的旧项目，或将属性设为 `None`，仍使用原有包围盒拾取。项目必须自行配置 Trace Channel 和碰撞响应；插件不会修改资产、开启物理模拟或修改碰撞设置。角色胶囊覆盖区域决定角色事件范围，不能自动贴合手脚或舞蹈姿态。
 
 ### 打开菜单与关闭动画
 
@@ -134,8 +136,8 @@
 - **DesktopPet Utility / Window / Limits**（7 项）：[PetGetMinZoom](#petgetminzoom)、[PetGetMaxZoom](#petgetmaxzoom)、[PetGetEffectiveDisplayScaleLimits](#petgeteffectivedisplayscalelimits)、[PetGetMaxDisplayScale](#petgetmaxdisplayscale)、[PetGetMaxWindowSize](#petgetmaxwindowsize)、[PetGetMinDisplayScale](#petgetmindisplayscale)、[PetGetMinWindowSize](#petgetminwindowsize)。
 - **DesktopPet / Input**（9 项）：[PetBeginWindowDrag](#petbeginwindowdrag)、[PetSetClickThroughTransparentPixels](#petsetclickthroughtransparentpixels)、[PetSetDraggable](#petsetdraggable)、[PetEndWindowDrag](#petendwindowdrag)、[PetSetHitAlphaThreshold](#petsethitalphathreshold)、[PetSetWheelZoomEnabled](#petsetwheelzoomenabled)、[PetSetWheelZoomStep](#petsetwheelzoomstep)、[PetSetZoomAnimationSeconds](#petsetzoomanimationseconds)、[PetZoomAtScreenPosition](#petzoomatscreenposition)。
 - **DesktopPet Utility / Input**（7 项）：[PetGetWheelZoomEnabled](#petgetwheelzoomenabled)、[PetGetWheelZoomStep](#petgetwheelzoomstep)、[PetIsInputKeyDown](#petisinputkeydown)、[PetIsWindowDragging](#petiswindowdragging)、[PetGetZoomAnimationSeconds](#petgetzoomanimationseconds)、[PetGetZoomTargetScale](#petgetzoomtargetscale)、[PetIsZooming](#petiszooming)。
-- **DesktopPet / Interaction**（1 项）：[PetMouseScreenVectorOrigin](#petmousescreenvectororigin)。
-- **DesktopPet Utility / Interaction**（6 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetMouseWorldPositionOnPlane](#petgetmouseworldpositiononplane)、[PetGetActorToMouseScreenDistanceRatio](#petgetactortomousescreendistanceratio)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)。
+- **DesktopPet / Interaction**（3 项）：[PetMouseScreenVectorOrigin](#petmousescreenvectororigin)、[InteractionTraceChannel](#interactiontracechannel)、[PetSetInteractionTraceChannel](#petsetinteractiontracechannel)。
+- **DesktopPet Utility / Interaction**（7 项）：[PetGetActorToMouseScreenVector](#petgetactortomousescreenvector)、[PetGetMouseWorldPositionOnPlane](#petgetmouseworldpositiononplane)、[PetGetActorToMouseScreenDistanceRatio](#petgetactortomousescreendistanceratio)、[PetGetHoveredActor](#petgethoveredactor)、[PetGetInteractionActorAtPixel](#petgetinteractionactoratpixel)、[PetGetInteractionActors](#petgetinteractionactors)、[PetGetInteractionTraceChannel](#petgetinteractiontracechannel)。
 - **DesktopPet Utility / UI**（4 项）：[PetGetConfigWidget](#petgetconfigwidget)、[PetIsConfigWidgetOpen](#petisconfigwidgetopen)、[PetGetInteractionProgress](#petgetinteractionprogress)、[PetGetOverlayWidget](#petgetoverlaywidget)。
 - **DesktopPet Utility / Orbit**（3 项）：[PetGetOrbitCenter](#petgetorbitcenter)、[PetGetOrbitDistance](#petgetorbitdistance)、[PetGetOrbitFocusActor](#petgetorbitfocusactor)。
 - **DesktopPet Utility / Tray**（1 项）：[PetIsHiddenToTray](#petishiddentotray)。
@@ -2021,6 +2023,22 @@ bool PetIsZooming() const;
 
 ## DesktopPet / Interaction
 
+### InteractionTraceChannel
+
+**可编辑属性** · `DesktopPet / Interaction` · `Name` · 默认 `PetInteract`
+
+在 Pet 实例或蓝图 Class Defaults 的 **Interaction Trace Channel** 中填写 Project Settings → Collision 已配置的 Trace Channel 名称。仅影响鼠标事件对象查询，不改变窗口操作。`None` 或名称无法解析时使用旧包围盒方式，以兼容未配置通道的旧项目。
+
+### PetSetInteractionTraceChannel
+
+**函数** · `DesktopPet / Interaction`
+
+```cpp
+bool PetSetInteractionTraceChannel(FName ChannelName);
+```
+
+运行时切换当前 Pet 的事件检测通道。有效 Trace Channel 或 `None` 返回 true；无效名称返回 false 并保留原设置。下次鼠标采样会按新通道更新悬停对象，并发送必要的 Leave / Enter。
+
 ### PetMouseScreenVectorOrigin
 
 **可编辑属性** · `DesktopPet / Interaction` · `Vector` · 默认 `(0, 0, 0)`
@@ -2034,6 +2052,16 @@ bool PetIsZooming() const;
 该属性随关卡实例或蓝图默认值保存，不属于 `PetSaveRuntimeConfig` 的通用窗口配置；运行时动态修改不会自动写入配置档。
 
 ## DesktopPet Utility / Interaction
+
+### PetGetInteractionTraceChannel
+
+**纯函数** · `DesktopPet Utility / Interaction`
+
+```cpp
+FName PetGetInteractionTraceChannel() const;
+```
+
+返回当前 Pet 配置的通道名称，不修改碰撞或输入状态。
 
 ### PetGetActorToMouseScreenVector
 
@@ -2158,7 +2186,7 @@ AActor* PetGetInteractionActorAtPixel(FVector2D PixelPosition) const;
 
 **引脚 / 类型：** Target：DesktopPetActor 对象引用；输入 `PixelPosition`：`FVector2D`；输出 `Return Value`：`AActor*`。
 
-**使用：** PixelPosition 为桌宠窗口内物理像素。查询沿用 UI 优先、场景 Alpha 与组件包围盒规则，不会触发点击事件；未命中返回 None。
+**使用：** PixelPosition 为桌宠窗口内物理像素。查询沿用 UI 优先、场景 Alpha 与当前 Interaction Trace Channel 的碰撞规则；旧模式使用组件包围盒。不会触发点击事件；未命中返回 None。
 
 ### PetGetInteractionActors
 
@@ -2172,7 +2200,7 @@ TArray<AActor*> PetGetInteractionActors() const;
 
 **引脚 / 类型：** Target：DesktopPetActor 对象引用；输出 `Return Value`：`TArray<AActor*>`。
 
-**使用：** 名单由捕获中有效、可见、非 Shape 的 PrimitiveComponent 所属 Actor 推导；返回数组副本，不是可直接修改的名单。
+**使用：** 先由捕获中有效、可见、非 Shape 的 PrimitiveComponent 确定可见 Actor，再筛选具有 Query 碰撞且 Block 当前交互通道的组件；隐藏 Shape 可作为同一 Actor 的代理。返回的是候选 Actor 副本，不代表鼠标已命中，也不是可直接修改的名单。旧模式仍返回原有可见 Actor 名单。
 
 
 ## DesktopPet Utility / UI
